@@ -5,38 +5,48 @@ edition = "2021"
 
 [dependencies]
 # --- Web Server ---
-# axum 0.7 及其核心提取器
+# Axum 0.7 生产级 Web 框架
 axum = { version = "0.7", features = ["macros"] }
-tokio = { version = "1", features = ["full"] }
-tower-http = { version = "0.5", features = ["fs", "cors", "add-extension"] }
+# Tokio 异步运行时，确保开启 signal 功能以支持优雅停机
+tokio = { version = "1", features = ["full", "signal"] }
+# Tower-HTTP 加固：增加 timeout 处理慢请求，fs 处理静态文件，cors 处理跨域
+tower-http = { version = "0.5", features = ["fs", "cors", "timeout", "add-extension"] }
 
 # --- Serialization & Data ---
+# 严格的序列化处理
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
-# 二进制序列化，用于高性能本地存储
+# 高性能二进制持久化
 bincode = "1.3"
 
 # --- Math & Utils ---
-# chrono 处理时间，rand 提供正态分布噪声
+# 时间处理与正态分布随机噪声
 chrono = { version = "0.4", features = ["serde"] }
 rand = "0.8"
 rand_distr = "0.4"
-# parking_lot 提供比标准库更快的 RwLock
+# 并发锁优化，生产环境推荐
 parking_lot = "0.12"
 
 # --- Networking & Concurrency ---
-# 用于获取节假日 API
+# 异步网络请求，设置超时防止挂起
 reqwest = { version = "0.11", features = ["json"] }
-# Rayon 用于高并发时的 CPU 密集型计算 (批量计算总价)
+# 并行计算，充分利用多核 CPU 处理批量交易
 rayon = "1.8"
 
 # --- Logging & Tracing ---
+# 生产级结构化日志
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
 [profile.release]
-# 针对经济内核的生产环境优化
+# --- 生产环境极致优化 ---
+# 开启链接时优化 (LTO)，减少二进制体积并提升运行速度
 lto = true
+# 最高等级优化
 opt-level = 3
+# 限制并行编译单元，提升生成代码的质量
 codegen-units = 1
+# 发生 Panic 时直接退出，不进行栈回溯，减小体积并提高安全性
 panic = 'abort'
+# 移除符号信息，进一步缩小体积
+strip = true
