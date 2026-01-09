@@ -12,7 +12,6 @@
     <script src="https://unpkg.com/lucide@latest"></script>
 
     <style>
-        /* 基础设置 - 白色模式 */
         [v-cloak] { display: none !important; }
         body { 
             background-color: #f8fafc; 
@@ -20,7 +19,6 @@
             font-family: 'Inter', system-ui, -apple-system, sans-serif; 
         }
 
-        /* 动态背景网格 - 适配白色 */
         .bg-grid {
             background-size: 40px 40px;
             background-image: linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
@@ -28,21 +26,14 @@
             mask-image: radial-gradient(circle at center, black 40%, transparent 100%);
         }
 
-        /* 白色磨砂玻璃卡片 */
         .glass-card {
             background: rgba(255, 255, 255, 0.7);
             backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
             border: 1px solid rgba(255, 255, 255, 0.8);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        .glass-card:hover {
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-            border-color: rgba(226, 232, 240, 1);
-        }
 
-        /* 现代化输入框 - 白色风格 */
         .input-modern {
             width: 100%;
             background-color: #ffffff;
@@ -50,117 +41,47 @@
             border-radius: 0.5rem;
             padding: 0.6rem 0.8rem;
             font-size: 0.875rem;
-            color: #0f172a;
             outline: none;
             transition: all 0.2s;
-            /* 彻底移除默认增减箭头 */
-            -moz-appearance: textfield;
-            appearance: none;
-        }
-        .input-modern::-webkit-outer-spin-button,
-        .input-modern::-webkit-inner-spin-button {
-            -webkit-appearance: none;
-            margin: 0;
         }
         .input-modern:focus {
-            background-color: #ffffff;
             border-color: #6366f1;
             box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
         }
 
-        /* Tooltip 样式 - 浅色模式 */
-        .custom-tooltip {
-            opacity: 0;
-            visibility: hidden;
-            transform: translateY(10px);
-            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-            z-index: 100;
-        }
-        .group:hover .custom-tooltip {
-            opacity: 1;
-            visibility: visible;
-            transform: translateY(0);
-        }
+        .pulse-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+        .pulse-dot.online { background-color: #10b981; animation: pulse-green 2s infinite; }
+        .pulse-dot.offline { background-color: #ef4444; }
 
-        /* 状态指示灯 */
-        .pulse-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            display: inline-block;
-        }
-        .pulse-dot.online {
-            background-color: #10b981;
-            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
-            animation: pulse-green 2s infinite;
-        }
-        .pulse-dot.offline {
-            background-color: #ef4444;
-        }
         @keyframes pulse-green {
             0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
             70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
             100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
         }
 
-        /* 侧边栏列表项 */
-        .sidebar-item {
-            transition: all 0.2s;
-            position: relative;
-            overflow: hidden;
-        }
-        .sidebar-item::before {
-            content: '';
-            position: absolute;
-            left: 0; top: 0; bottom: 0;
-            width: 3px;
-            background: #6366f1;
-            transform: scaleY(0);
-            transition: transform 0.2s;
-        }
-        .sidebar-item.active::before {
-            transform: scaleY(1);
-        }
-        .sidebar-item.active {
-            background: rgba(99, 102, 241, 0.05);
-            border-color: rgba(99, 102, 241, 0.2);
-        }
-
-        /* 滚动条美化 */
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-
-        /* 字体工具类 */
+        .sidebar-item.active { background: rgba(99, 102, 241, 0.05); border-color: rgba(99, 102, 241, 0.2); }
         .font-mono-number { font-feature-settings: "tnum"; font-variant-numeric: tabular-nums; }
-        
-        /* Toast 动画 */
         .toast-enter-active, .toast-leave-active { transition: all 0.3s ease; }
         .toast-enter-from, .toast-leave-to { opacity: 0; transform: translateX(30px); }
     </style>
 </head>
-<body class="h-screen overflow-hidden antialiased selection:bg-indigo-100">
+<body class="h-screen overflow-hidden antialiased">
 
-    <!-- 背景装饰 -->
     <div class="fixed inset-0 z-0 pointer-events-none bg-grid"></div>
-    <div class="fixed top-0 left-0 w-full h-96 bg-indigo-500/10 blur-3xl rounded-full pointer-events-none -translate-y-1/2"></div>
 
     <div id="app" class="relative z-10 flex w-full h-full" v-cloak>
         
-        <!-- 左侧侧边栏 -->
         <aside class="w-80 bg-white/90 backdrop-blur-md border-r border-slate-200 flex flex-col z-20 shadow-sm">
-            <!-- Logo区 -->
             <div class="p-6 border-b border-slate-100">
                 <div class="flex items-center gap-3 mb-5">
-                    <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30">
+                    <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
                         <i data-lucide="bar-chart-3" class="text-white w-5 h-5"></i>
                     </div>
                     <div>
-                        <h1 class="font-bold text-lg tracking-tight text-slate-800">Economy Core</h1>
+                        <h1 class="font-bold text-lg text-slate-800">Economy Core</h1>
                         <div class="flex items-center gap-2 mt-0.5">
                             <span class="pulse-dot" :class="serverStatus ? 'online' : 'offline'"></span>
-                            <span class="text-[10px] font-medium uppercase tracking-wider" :class="serverStatus ? 'text-emerald-600' : 'text-red-600'">
+                            <span class="text-[10px] font-medium uppercase" :class="serverStatus ? 'text-emerald-600' : 'text-red-600'">
                                 {{ serverStatus ? '系统在线' : '连接断开' }}
                             </span>
                         </div>
@@ -168,52 +89,36 @@
                 </div>
                 
                 <div class="relative group">
-                    <i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-slate-400 group-focus-within:text-indigo-500 transition-colors"></i>
-                    <input v-model="searchQuery" placeholder="搜索物品 ID / 名称..." class="input-modern pl-10 h-10 text-sm placeholder-slate-400 bg-slate-50 border-slate-200">
+                    <i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-slate-400"></i>
+                    <input v-model="searchQuery" placeholder="搜索物品 ID / 名称..." class="input-modern pl-10 h-10 text-sm">
                 </div>
             </div>
 
             <div class="flex-1 overflow-y-auto p-3 space-y-1">
-                <div v-if="loadingItems" class="flex flex-col items-center justify-center py-12 text-slate-400">
-                    <div class="w-8 h-8 border-2 border-indigo-200 border-t-indigo-500 rounded-full animate-spin mb-3"></div>
-                    <span class="text-xs">加载数据中...</span>
-                </div>
-                
                 <div v-for="item in filteredItems" :key="item.id" 
                      @click="selectItem(item)"
-                     class="sidebar-item group p-3 rounded-xl cursor-pointer border border-slate-100 hover:bg-white hover:shadow-sm transition-all"
-                     :class="{'active border-indigo-100 bg-indigo-50/50': realItem.id === item.id}">
-                    
+                     class="sidebar-item group p-3 rounded-xl cursor-pointer border border-slate-100 hover:bg-white transition-all"
+                     :class="{'active border-indigo-100 bg-indigo-50/50': activeItem.id === item.id}">
                     <div class="flex justify-between items-center mb-1">
-                        <span class="font-semibold text-sm truncate" :class="realItem.id === item.id ? 'text-indigo-900' : 'text-slate-700 group-hover:text-slate-900'">
-                            {{ item.name }}
-                        </span>
+                        <span class="font-semibold text-sm text-slate-700">{{ item.name }}</span>
                         <span class="text-[10px] font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-500">{{ item.id }}</span>
                     </div>
-                    
                     <div class="flex justify-between items-center text-[10px] font-mono-number text-slate-500">
-                        <span class="flex items-center gap-1">
-                            <i data-lucide="layers" class="w-3 h-3"></i> {{ formatNumber(item.n) }}
-                        </span>
-                        <span class="flex items-center gap-1 text-amber-600">
-                            <i data-lucide="coins" class="w-3 h-3"></i> {{ item.basePrice }}
-                        </span>
+                        <span><i data-lucide="layers" class="w-3 h-3 inline"></i> {{ Math.round(item.n) }}</span>
+                        <span class="text-amber-600"><i data-lucide="coins" class="w-3 h-3 inline"></i> {{ item.basePrice }}</span>
                     </div>
                 </div>
             </div>
 
-            <div class="p-4 bg-slate-50/80 border-t border-slate-200 backdrop-blur-sm">
+            <div class="p-4 bg-slate-50 border-t border-slate-200">
                 <div class="grid grid-cols-2 gap-2 text-[10px] font-mono-number text-slate-500">
-                    <div class="bg-white p-2 rounded-lg border border-slate-200 flex flex-col items-center justify-center shadow-sm">
-                        <span class="text-slate-400 mb-1">交易量</span>
+                    <div class="bg-white p-2 rounded-lg border border-slate-200 flex flex-col items-center">
+                        <span class="text-slate-400">系统总交易</span>
                         <span class="text-indigo-600 font-bold">{{ metrics.totalTrades }}</span>
                     </div>
-                    <div class="bg-white p-2 rounded-lg border border-slate-200 flex flex-col items-center justify-center shadow-sm">
-                        <span class="text-slate-400 mb-1">丢包</span>
-                        <span class="text-rose-600 font-bold">{{ metrics.dropped }}</span>
-                    </div>
-                    <div class="col-span-2 mt-1 text-center text-[10px] text-slate-400 flex items-center justify-center gap-2 bg-white p-1 rounded-lg border border-slate-200">
-                        <i data-lucide="clock" class="w-3 h-3"></i> {{ formatUptime(metrics.uptime) }}
+                    <div class="bg-white p-2 rounded-lg border border-slate-200 flex flex-col items-center">
+                        <span class="text-slate-400">活跃玩家</span>
+                        <span class="text-rose-600 font-bold">{{ metrics.activePlayers }}</span>
                     </div>
                 </div>
             </div>
@@ -222,275 +127,145 @@
         <main class="flex-1 flex flex-col relative bg-slate-50/50">
             <header class="h-16 border-b border-slate-200 bg-white/80 backdrop-blur-xl flex justify-between items-center px-8 z-10 shadow-sm">
                 <div class="flex gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
-                    <button @click="currentTab = 'simulation'" class="flex items-center gap-2 px-4 py-1.5 rounded-lg transition-all text-sm font-medium"
-                            :class="currentTab === 'simulation' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'">
-                        <i data-lucide="activity" class="w-4 h-4"></i> 核心分析
-                    </button>
-                    <button @click="currentTab = 'config'" class="flex items-center gap-2 px-4 py-1.5 rounded-lg transition-all text-sm font-medium"
-                            :class="currentTab === 'config' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'">
-                        <i data-lucide="sliders" class="w-4 h-4"></i> 生产配置
-                    </button>
+                    <button @click="currentTab = 'simulation'" class="px-4 py-1.5 rounded-lg text-sm font-medium" :class="currentTab === 'simulation' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'">核心分析</button>
+                    <button @click="currentTab = 'config'" class="px-4 py-1.5 rounded-lg text-sm font-medium" :class="currentTab === 'config' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'">生产配置</button>
                 </div>
 
-                <div class="flex items-center gap-4">
-                    <div class="flex flex-col items-end">
-                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">全局环境因子</span>
-                        <div class="flex items-baseline gap-1">
-                            <span class="text-2xl font-mono-number font-bold text-amber-600 tracking-tight">{{ currentEnv.toFixed(4) }}</span>
-                            <i data-lucide="trending-up" class="w-3 h-3 text-emerald-500"></i>
+                <div class="flex items-center gap-6">
+                    <div class="flex flex-col items-end mr-4">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">验证模式</span>
+                        <div class="flex items-center gap-2 mt-1">
+                            <span v-if="config" :class="config.isOnlineMode ? 'text-indigo-600 bg-indigo-50' : 'text-slate-500 bg-slate-100'" 
+                                  class="text-[10px] font-bold px-2.5 py-1 rounded-lg border border-current opacity-80">
+                                <i :data-lucide="config.isOnlineMode ? 'shield-check' : 'shield-alert'" class="w-3 h-3 inline mr-1"></i>
+                                {{ config.isOnlineMode ? 'MOJANG AUTH' : 'OFFLINE MODE' }}
+                            </span>
                         </div>
                     </div>
-                    <div class="h-8 w-8 rounded-full bg-slate-200 border border-slate-300 flex items-center justify-center text-xs font-bold text-slate-500">
-                        AD
+                    <div class="text-right">
+                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">模拟 UUID/玩家名</p>
+                        <input v-model="playerId" class="text-xs font-mono border-none bg-transparent text-right text-indigo-600 focus:ring-0 p-0 w-32" placeholder="Player ID">
+                    </div>
+                    <div class="w-px h-8 bg-slate-200"></div>
+                    <div class="flex flex-col items-end">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase">环境指数 ε</span>
+                        <span class="text-2xl font-mono-number font-bold text-amber-600 tracking-tight">{{ currentEnv.toFixed(4) }}</span>
                     </div>
                 </div>
             </header>
 
             <div class="flex-1 overflow-hidden relative p-6">
-                <!-- 核心分析视图 -->
-                <div v-show="currentTab === 'simulation'" class="absolute inset-0 p-6 gap-6 overflow-hidden flex">
-                    
-                    <div class="w-96 flex flex-col gap-6 h-full">
-                        <div class="glass-card rounded-2xl p-6 relative overflow-hidden">
-                            <div class="absolute top-0 right-0 p-4 opacity-5">
-                                <i data-lucide="package" class="w-16 h-16"></i>
+                <div v-show="currentTab === 'simulation'" class="absolute inset-0 p-6 flex gap-6">
+                    <div class="w-96 flex flex-col gap-6">
+                        <div class="glass-card rounded-2xl p-6">
+                            <div class="flex justify-between items-start mb-4">
+                                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest">目标状态</h3>
+                                <span class="text-[9px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold">LIVE</span>
                             </div>
-                            
-                            <div class="flex items-center justify-between mb-4">
-                                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                    <i data-lucide="crosshair" class="w-3 h-3 text-indigo-500"></i> 目标对象
-                                </h3>
-                                <span v-if="realItem.id" class="text-[10px] px-2 py-0.5 rounded-full border border-slate-200 bg-slate-50 text-slate-500">ID: {{ realItem.id }}</span>
-                            </div>
-
-                            <div v-if="realItem.id" class="space-y-5">
-                                <div>
-                                    <div class="text-xl font-bold text-slate-800 truncate mb-1">{{ realItem.name }}</div>
-                                    <div class="text-xs text-slate-500">实时追踪中</div>
-                                </div>
-                                
-                                <div class="grid grid-cols-2 gap-3">
-                                    <div class="bg-white/60 p-4 rounded-xl border border-slate-200 shadow-sm">
-                                        <div class="flex items-center gap-1.5 mb-1">
-                                            <div class="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
-                                            <div class="text-[10px] text-slate-500 uppercase">实时单价</div>
+                            <div v-if="activeItem.id">
+                                <div class="text-xl font-bold text-slate-800 mb-4">{{ activeItem.name }}</div>
+                                <div class="space-y-4">
+                                    <div class="grid grid-cols-2 gap-3">
+                                        <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+                                            <div class="text-[10px] text-slate-400 uppercase font-bold mb-1">即时成交价</div>
+                                            <div class="text-lg font-mono-number font-bold text-indigo-600">{{ currentPrice.toFixed(2) }}</div>
                                         </div>
-                                        <div class="text-xl font-mono-number font-bold text-slate-800">{{ currentPrice.toFixed(2) }}</div>
+                                        <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+                                            <div class="text-[10px] text-slate-400 uppercase font-bold mb-1">有效权重 n_eff</div>
+                                            <div class="text-lg font-mono-number font-bold text-slate-800">{{ simN.toFixed(2) }}</div>
+                                        </div>
                                     </div>
-                                    <div class="bg-white/60 p-4 rounded-xl border border-slate-200 shadow-sm">
-                                        <div class="flex items-center gap-1.5 mb-1">
-                                            <div class="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>
-                                            <div class="text-[10px] text-slate-500 uppercase">Lambda (λ)</div>
-                                        </div>
-                                        <div class="text-xl font-mono-number font-bold text-slate-800">{{ realItem.lambda.toFixed(5) }}</div>
+                                    
+                                    <div class="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
+                                        <label class="text-[10px] text-indigo-500 font-bold uppercase block mb-2">特别调整项 (ι)</label>
+                                        <input type="number" v-model.number="iota" step="10" class="input-modern h-9 font-mono text-xs" placeholder="物价偏移量">
+                                        <p class="text-[9px] text-indigo-400 mt-2">用于模拟全服库存短缺或过剩。</p>
                                     </div>
                                 </div>
                             </div>
-                            
-                            <div v-else class="h-32 flex flex-col items-center justify-center text-slate-400 border border-dashed border-slate-300 rounded-xl">
-                                <i data-lucide="mouse-pointer-2" class="w-6 h-6 mb-2 opacity-50"></i>
-                                <span class="text-xs">请在左侧列表选择物品</span>
+                            <div v-else class="py-10 text-center text-slate-300 text-xs border border-dashed border-slate-200 rounded-xl">
+                                选择左侧物品开启监控
                             </div>
                         </div>
 
                         <div class="glass-card rounded-2xl p-6 flex-1 flex flex-col">
-                            <h3 class="text-xs font-bold text-slate-400 uppercase mb-5 flex items-center gap-2 tracking-wider">
-                                <i data-lucide="flask-conical" class="w-4 h-4 text-rose-500"></i> 模拟交易沙盒
+                            <h3 class="text-xs font-bold text-slate-400 uppercase mb-6 flex items-center gap-2">
+                                <i data-lucide="flask-conical" class="w-4 h-4 text-rose-500"></i> 交易压力测试
                             </h3>
-                            
-                            <div class="space-y-5 flex-1">
-                                <div class="space-y-2">
-                                    <label class="text-[10px] font-bold text-slate-500 ml-1 uppercase">模拟库存 (N)</label>
-                                    <input type="number" v-model.number="simItem.n" class="input-modern font-mono-number text-indigo-600 border-indigo-200 text-right pr-4 focus:border-indigo-400">
-                                </div>
-                                <div class="space-y-2">
-                                    <label class="text-[10px] font-bold text-slate-500 ml-1 uppercase">交易数量 (ΔN)</label>
-                                    <div class="flex gap-2 items-center">
-                                        <button @click="tradeAmount = 1" class="w-8 h-9 rounded bg-slate-100 text-slate-600 text-xs hover:bg-slate-200 transition-colors border border-slate-200">1</button>
-                                        <button @click="tradeAmount = 64" class="w-8 h-9 rounded bg-slate-100 text-slate-600 text-xs hover:bg-slate-200 transition-colors border border-slate-200">64</button>
-                                        <button @click="tradeAmount = 640" class="w-8 h-9 rounded bg-slate-100 text-slate-600 text-xs hover:bg-slate-200 transition-colors border border-slate-200">640</button>
-                                        <input type="number" v-model.number="tradeAmount" class="input-modern flex-1 !p-0 !bg-transparent !border-0 !pl-2 text-right text-sm font-mono-number text-slate-700 focus:!ring-0" placeholder="自定义...">
+                            <div class="space-y-6 flex-1">
+                                <div>
+                                    <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">测试交易量 (Δn)</label>
+                                    <div class="flex gap-2 mt-1">
+                                        <input type="number" v-model.number="tradeAmount" class="input-modern font-mono-number text-indigo-600 flex-1">
+                                        <button @click="tradeAmount = 64" class="px-3 bg-slate-100 text-slate-500 text-xs rounded-lg hover:bg-slate-200">64</button>
                                     </div>
                                 </div>
-                                
-                                <div class="grid grid-cols-2 gap-3 pt-4 mt-auto">
-                                    <button @click="simulateTrade('buy')" 
-                                            :disabled="!realItem.id"
-                                            class="group py-3 bg-rose-500 hover:bg-rose-600 text-white rounded-xl text-xs font-bold shadow-sm shadow-rose-200 hover:shadow-rose-300 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                                        <i data-lucide="arrow-down-circle" class="w-4 h-4"></i> 买入 (BUY)
+                                <div class="grid grid-cols-2 gap-3">
+                                    <button @click="simulateTrade('buy')" :disabled="!activeItem.id" class="py-3 bg-rose-500 text-white rounded-xl text-xs font-bold shadow-lg hover:bg-rose-600 active:scale-95 disabled:opacity-50 transition-all">
+                                        买入 (BUY)
                                     </button>
-                                    <button @click="simulateTrade('sell')" 
-                                            :disabled="!realItem.id"
-                                            class="group py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-sm shadow-emerald-200 hover:shadow-emerald-300 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                                        <i data-lucide="arrow-up-circle" class="w-4 h-4"></i> 卖出 (SELL)
+                                    <button @click="simulateTrade('sell')" :disabled="!activeItem.id" class="py-3 bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-lg hover:bg-emerald-600 active:scale-95 disabled:opacity-50 transition-all">
+                                        卖出 (SELL)
                                     </button>
                                 </div>
                             </div>
 
-                            <div v-if="simResult" class="mt-6 p-4 bg-indigo-50 border border-indigo-100 rounded-xl relative overflow-hidden">
-                                <div class="flex justify-between items-center mb-2 relative z-10">
-                                    <span class="text-xs text-indigo-600 font-medium">预计成交总额</span>
-                                    <span class="text-lg font-mono-number font-bold text-slate-800">{{ simResult.totalPrice.toFixed(2) }}</span>
+                            <div v-if="simResult" class="mt-8 p-5 bg-slate-900 text-white rounded-2xl shadow-2xl relative overflow-hidden">
+                                <div class="absolute top-0 right-0 p-2 opacity-10"><i data-lucide="receipt" class="w-12 h-12"></i></div>
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="text-[10px] text-slate-400 font-bold uppercase">模拟成交总额</span>
+                                    <span class="text-2xl font-mono-number font-bold text-emerald-400">{{ simResult.totalPrice.toFixed(2) }}</span>
                                 </div>
-                                <div class="w-full h-px bg-indigo-200 my-2"></div>
-                                <div class="flex justify-between items-center text-xs relative z-10">
-                                    <span class="text-indigo-400">平均成交单价</span>
-                                    <span class="text-slate-600 font-mono-number">{{ simResult.unitPriceAvg.toFixed(4) }}</span>
+                                <div class="h-px bg-white/10 my-3"></div>
+                                <div class="flex justify-between items-center text-[10px]">
+                                    <span class="text-slate-400">平均单价</span>
+                                    <span class="font-mono text-slate-200">{{ simResult.unitPriceAvg.toFixed(4) }}</span>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <div class="flex-1 glass-card rounded-2xl p-6 flex flex-col relative border border-slate-200">
+                    <div class="flex-1 glass-card rounded-2xl p-6 flex flex-col border border-slate-200">
                         <div class="flex justify-between items-center mb-4">
                             <h3 class="text-sm font-bold flex items-center gap-2 text-slate-700">
-                                <i data-lucide="line-chart" class="w-5 h-5 text-indigo-500"></i>
-                                价格指数衰减模型
+                                <i data-lucide="line-chart" class="w-5 h-5 text-indigo-500"></i> AMM 指数衰减模型
                             </h3>
-                            <div class="flex gap-2">
-                                <button @click="resetZoom" class="group flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 text-[10px] rounded-lg border border-slate-200 shadow-sm transition-all text-slate-500 hover:text-slate-700">
-                                    <i data-lucide="refresh-cw" class="w-3 h-3 group-hover:rotate-180 transition-transform"></i> 重置
-                                </button>
-                            </div>
+                            <button @click="fetchMarket" class="text-xs text-indigo-600 font-bold hover:underline">刷新市场快照</button>
                         </div>
-                        <div class="flex-1 w-full min-h-[400px] bg-white rounded-xl border border-slate-200 relative p-2 shadow-inner">
-                            <div id="priceChart" class="w-full h-full"></div>
-                        </div>
+                        <div id="priceChart" class="flex-1 bg-white rounded-xl border border-slate-100 p-2"></div>
                     </div>
                 </div>
 
-                <!-- 配置视图 -->
-                <div v-show="currentTab === 'config'" class="absolute inset-0 overflow-y-auto p-6">
-                    <div class="max-w-5xl mx-auto h-full">
-                        <div class="flex justify-between items-end mb-10">
+                <div v-show="currentTab === 'config'" class="absolute inset-0 p-8 overflow-y-auto">
+                    <div class="max-w-4xl mx-auto space-y-8">
+                        <div class="flex justify-between items-center">
                             <div>
-                                <h2 class="text-3xl font-bold text-slate-800">核心配置管理</h2>
-                                <p class="text-slate-500 mt-2 text-sm">
-                                    管理经济系统的全局参数，修改将实时生效。
-                                </p>
+                                <h2 class="text-3xl font-bold text-slate-800">系统全局参数</h2>
+                                <p class="text-slate-500 text-sm mt-1">控制时间恢复速率与市场基础环境</p>
                             </div>
-                            <button @click="saveConfig" class="flex items-center gap-2 px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold shadow-lg shadow-slate-900/10 transition-all active:scale-95">
-                                <i data-lucide="save" class="w-5 h-5"></i> 保存配置
-                            </button>
+                            <button @click="saveConfig" class="px-8 py-3 bg-slate-900 text-white rounded-2xl font-bold shadow-xl hover:bg-slate-800 transition-all active:scale-95">同步至服务端</button>
                         </div>
-
-                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 pb-12" v-if="config">
-                            <div class="glass-card p-8 rounded-2xl lg:col-span-2 space-y-8">
-                                <div class="flex items-center gap-2 mb-4">
-                                    <i data-lucide="settings-2" class="w-5 h-5 text-indigo-500"></i>
-                                    <h4 class="text-sm font-bold text-slate-700">基础市场参数</h4>
+                        <div v-if="config" class="grid grid-cols-2 gap-8">
+                            <div class="glass-card p-8 rounded-2xl space-y-6">
+                                <h4 class="text-xs font-bold text-indigo-600 uppercase">时间恢复 (Recovery)</h4>
+                                <div>
+                                    <label class="text-[10px] font-bold text-slate-400 uppercase">恢复率 (δ)</label>
+                                    <input v-model.number="config.recoveryDelta" step="0.01" class="input-modern mt-1">
                                 </div>
-                                
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <!-- Base Env Index -->
-                                    <div class="group relative">
-                                        <label class="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
-                                            全局价格系数
-                                            <i data-lucide="help-circle" class="w-3 h-3 text-slate-400 cursor-help"></i>
-                                        </label>
-                                        <div class="relative">
-                                            <input type="number" step="0.1" v-model.number="config.baseEnvIndex" class="input-modern font-mono-number">
-                                            <div class="absolute right-3 top-2.5 text-slate-400 text-xs font-mono">BASE</div>
-                                        </div>
-                                        
-                                        <div class="custom-tooltip absolute left-0 top-full mt-2 z-50 w-64 p-4 rounded-xl bg-white/95 backdrop-blur shadow-xl border border-slate-200 text-xs text-slate-600">
-                                            <div class="font-bold text-slate-800 mb-1">说明</div>
-                                            <div class="leading-relaxed">
-                                                影响全服物品价格的乘数。<br>
-                                                数值越高，全服物价整体上涨；数值越低，物价下跌。默认为 1.0。
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <!-- Buy Premium -->
-                                    <div class="group relative">
-                                        <label class="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
-                                            买入加价倍率
-                                            <i data-lucide="help-circle" class="w-3 h-3 text-slate-400 cursor-help"></i>
-                                        </label>
-                                        <div class="relative">
-                                            <input type="number" step="0.05" v-model.number="config.buyPremium" class="input-modern font-mono-number">
-                                            <div class="absolute right-3 top-2.5 text-slate-400 text-xs font-mono">MULT</div>
-                                        </div>
-
-                                        <div class="custom-tooltip absolute left-0 top-full mt-2 z-50 w-64 p-4 rounded-xl bg-white/95 backdrop-blur shadow-xl border border-slate-200 text-xs text-slate-600">
-                                            <div class="font-bold text-slate-800 mb-1">说明</div>
-                                            <div class="leading-relaxed">
-                                                玩家向系统购买物品时的溢价系数。<br>
-                                                通常设置为大于 1.0（如 1.2），以确保买入价格高于卖出价格。
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="w-full h-px bg-slate-200 my-6"></div>
-                                
-                                <div class="flex items-center gap-2 mb-4">
-                                    <i data-lucide="calendar" class="w-5 h-5 text-purple-500"></i>
-                                    <h4 class="text-sm font-bold text-slate-700">时间调节参数</h4>
-                                </div>
-
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div class="group relative">
-                                        <label class="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
-                                            节假日系数
-                                            <i data-lucide="help-circle" class="w-3 h-3 text-slate-400 cursor-help"></i>
-                                        </label>
-                                        <input type="number" v-model.number="config.publicHolidayFactor" class="input-modern font-mono-number">
-                                        
-                                        <div class="custom-tooltip absolute left-0 top-full mt-2 z-50 w-64 p-4 rounded-xl bg-white/95 backdrop-blur shadow-xl border border-slate-200 text-xs text-slate-600">
-                                            <div class="font-bold text-slate-800 mb-1">说明</div>
-                                            <div class="leading-relaxed">
-                                                节假日期间的价格/权重折算系数。通常小于 1.0。
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="group relative">
-                                        <label class="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
-                                            周末系数
-                                            <i data-lucide="help-circle" class="w-3 h-3 text-slate-400 cursor-help"></i>
-                                        </label>
-                                        <input type="number" v-model.number="config.weekendFactor" class="input-modern font-mono-number">
-
-                                        <div class="custom-tooltip absolute left-0 top-full mt-2 z-50 w-64 p-4 rounded-xl bg-white/95 backdrop-blur shadow-xl border border-slate-200 text-xs text-slate-600">
-                                            <div class="font-bold text-slate-800 mb-1">说明</div>
-                                            <div class="leading-relaxed">
-                                                周末两日的价格/权重折算系数。通常小于 1.0。
-                                            </div>
-                                        </div>
-                                    </div>
+                                <div>
+                                    <label class="text-[10px] font-bold text-slate-400 uppercase">时间常数 (τ - 秒)</label>
+                                    <input v-model.number="config.recoveryTau" class="input-modern mt-1">
                                 </div>
                             </div>
-
-                            <div class="glass-card p-8 rounded-2xl space-y-6 bg-white/80">
-                                <div class="flex items-center gap-2 mb-4">
-                                    <i data-lucide="snowflake" class="w-5 h-5 text-sky-500"></i>
-                                    <h4 class="text-sm font-bold text-slate-700">日期范围设置</h4>
+                            <div class="glass-card p-8 rounded-2xl space-y-6">
+                                <h4 class="text-xs font-bold text-amber-600 uppercase">市场因子 (Market)</h4>
+                                <div>
+                                    <label class="text-[10px] font-bold text-slate-400 uppercase">买入溢价 (Buy Premium)</label>
+                                    <input v-model.number="config.buyPremium" step="0.05" class="input-modern mt-1">
                                 </div>
-
-                                <div class="space-y-6">
-                                    <div class="group relative p-4 rounded-xl bg-white border border-slate-200 shadow-sm">
-                                        <label class="text-xs text-sky-600 font-medium mb-3 flex items-center gap-2">
-                                            <i data-lucide="thermometer-snowflake" class="w-3 h-3"></i> 寒假日期
-                                        </label>
-                                        <div class="flex items-center gap-3">
-                                            <input v-model="config.winterStart" class="input-modern text-center font-mono text-sm" placeholder="MM-DD">
-                                            <i data-lucide="arrow-right" class="w-4 h-4 text-slate-400"></i>
-                                            <input v-model="config.winterEnd" class="input-modern text-center font-mono text-sm" placeholder="MM-DD">
-                                        </div>
-                                    </div>
-
-                                    <div class="group relative p-4 rounded-xl bg-white border border-slate-200 shadow-sm">
-                                        <label class="text-xs text-orange-600 font-medium mb-3 flex items-center gap-2">
-                                            <i data-lucide="sun" class="w-3 h-3"></i> 暑假日期
-                                        </label>
-                                        <div class="flex items-center gap-3">
-                                            <input v-model="config.summerStart" class="input-modern text-center font-mono text-sm" placeholder="MM-DD">
-                                            <i data-lucide="arrow-right" class="w-4 h-4 text-slate-400"></i>
-                                            <input v-model="config.summerEnd" class="input-modern text-center font-mono text-sm" placeholder="MM-DD">
-                                        </div>
-                                    </div>
+                                <div>
+                                    <label class="text-[10px] font-bold text-slate-400 uppercase">基础环境指数</label>
+                                    <input v-model.number="config.baseEnvIndex" step="0.1" class="input-modern mt-1">
                                 </div>
                             </div>
                         </div>
@@ -499,50 +274,38 @@
             </div>
         </main>
 
-        <div class="fixed top-6 right-6 z-50 flex flex-col gap-3 pointer-events-none">
+        <div class="fixed top-6 right-6 z-50 flex flex-col gap-3">
             <transition-group name="toast">
-                <div v-for="toast in toasts" :key="toast.id" 
-                     class="pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-lg shadow-xl border backdrop-blur-md min-w-[300px]"
-                     :class="toast.type === 'success' ? 'bg-white/90 border-emerald-100 text-emerald-800' : 'bg-white/90 border-red-100 text-red-800'">
-                    <i :data-lucide="toast.type === 'success' ? 'check-circle' : 'alert-octagon'" class="w-5 h-5"></i>
-                    <div class="flex-1 text-sm font-medium">{{ toast.message }}</div>
-                    <button @click="removeToast(toast.id)" class="opacity-50 hover:opacity-100">
-                        <i data-lucide="x" class="w-4 h-4"></i>
-                    </button>
+                <div v-for="toast in toasts" :key="toast.id" class="bg-white/95 backdrop-blur border border-slate-200 px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-4 min-w-[320px]">
+                    <div class="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center">
+                        <i data-lucide="bell" class="w-4 h-4 text-indigo-600"></i>
+                    </div>
+                    <span class="text-sm font-semibold text-slate-700">{{ toast.message }}</span>
                 </div>
             </transition-group>
         </div>
     </div>
 
     <script>
-        const { createApp, ref, reactive, onMounted, computed, watch, nextTick } = Vue;
+        const { createApp, ref, reactive, onMounted, computed, watch } = Vue;
 
         createApp({
             setup() {
                 const serverStatus = ref(false);
                 const currentTab = ref('simulation');
                 const searchQuery = ref('');
-                const loadingItems = ref(false);
-                
-                const metrics = reactive({
-                    totalTrades: 0,
-                    dropped: 0,
-                    uptime: 0
-                });
-
+                const playerId = ref('Admin_Tester');
+                const iota = ref(0);
                 const config = ref(null);
-                const items = ref([]); 
+                const items = ref([]);
+                const activeItem = reactive({ id: '', name: '', basePrice: 0, n: 0, lambda: 0 });
+                const simN = ref(0);
                 const currentEnv = ref(1.0);
                 const currentPrice = ref(0);
-
-                const realItem = reactive({ id: '', name: '', basePrice: 0, n: 0, lambda: 0 });
-                const simItem = reactive({ n: 0, lambda: 0 });
                 const tradeAmount = ref(64);
                 const simResult = ref(null);
-
                 const toasts = ref([]);
-                let toastId = 0;
-
+                const metrics = reactive({ totalTrades: 0, activePlayers: 0 });
                 let myChart = null;
 
                 const filteredItems = computed(() => {
@@ -550,209 +313,158 @@
                     return items.value.filter(i => i.name.toLowerCase().includes(q) || i.id.toLowerCase().includes(q));
                 });
 
-                const showToast = (message, type = 'success') => {
-                    const id = toastId++;
-                    toasts.value.push({ id, message, type });
-                    setTimeout(() => removeToast(id), 3000);
-                    nextTick(() => lucide.createIcons());
-                };
-                
-                const removeToast = (id) => {
-                    toasts.value = toasts.value.filter(t => t.id !== id);
+                const showToast = (message) => {
+                    const id = Date.now();
+                    toasts.value.push({ id, message });
+                    setTimeout(() => toasts.value = toasts.value.filter(t => t.id !== id), 3000);
                 };
 
-                const fetchMetrics = async () => {
-                    try {
-                        const res = await axios.get('/api/metrics');
-                        metrics.totalTrades = res.data.total_trades;
-                        metrics.dropped = res.data.channel_dropped;
-                        metrics.uptime = res.data.uptime_sec;
-                        serverStatus.value = true;
-                    } catch (e) { serverStatus.value = false; }
-                };
-
-                const fetchMarketData = async () => {
-                    loadingItems.value = true;
-                    try {
-                        const res = await axios.get('/api/market');
-                        items.value = res.data; 
-                        if (items.value.length > 0 && !realItem.id) selectItem(items.value[0]);
-                    } finally { loadingItems.value = false; }
-                };
-
-                const fetchConfig = async () => {
-                    const res = await axios.get('/api/config');
-                    config.value = res.data;
-                };
-
-                const selectItem = (item) => {
-                    Object.assign(realItem, item);
-                    simItem.n = item.n;
-                    simItem.lambda = item.lambda;
+                const selectItem = async (item) => {
+                    Object.assign(activeItem, item);
+                    simN.value = item.n; 
                     simResult.value = null;
-                    currentPrice.value = currentEnv.value * item.basePrice * Math.exp(-item.lambda * item.n);
-                    renderChart();
+                    await syncPreviewData();
                 };
 
-                const simulateTrade = async (type) => {
+                // 从后端同步真实的有效 N 和当前环境指数
+                const syncPreviewData = async () => {
+                    if(!activeItem.id) return;
                     try {
-                        const res = await axios.post(type === 'buy' ? '/calculate_buy' : '/calculate_sell', {
-                            basePrice: realItem.basePrice,
-                            startN: simItem.n,
-                            amount: tradeAmount.value,
-                            decayLambda: simItem.lambda,
+                        const res = await axios.post('/calculate_sell', {
+                            playerId: playerId.value,
+                            playerName: playerId.value,
+                            itemId: activeItem.id,
+                            basePrice: activeItem.basePrice,
+                            amount: 0.0001, // 极小量模拟获取当前 n_eff
+                            decayLambda: activeItem.lambda,
+                            iota: iota.value,
                             isPreview: true
                         });
-                        simResult.value = res.data;
+                        simN.value = res.data.effectiveN;
                         currentEnv.value = res.data.envIndex;
-                        
-                        const startN = simItem.n;
-                        simItem.n = type === 'buy' ? Math.max(0, simItem.n - tradeAmount.value) : simItem.n + tradeAmount.value;
-                        
-                        showToast(`模拟${type === 'buy' ? '买入' : '卖出'}成功`, 'success');
-                        renderChart(type, startN, tradeAmount.value);
-                    } catch (e) { 
-                        showToast("模拟失败: 后端服务异常", 'error'); 
-                    }
+                        updatePrice();
+                        renderChart();
+                    } catch (e) { console.error("Sync error", e); }
                 };
 
-                const saveConfig = async () => {
+                const updatePrice = () => {
+                    // P = ε * P0 * e^(-λ * (n + ι))
+                    currentPrice.value = currentEnv.value * activeItem.basePrice * Math.exp(-activeItem.lambda * (simN.value + iota.value));
+                };
+
+                watch(iota, updatePrice);
+
+                const simulateTrade = async (type) => {
+                    if (!activeItem.id) return;
                     try {
-                        await axios.post('/api/config', config.value);
-                        showToast("配置已保存");
-                    } catch(e) {
-                        showToast("配置保存失败", 'error');
+                        const res = await axios.post(`/calculate_${type}`, {
+                            playerId: playerId.value,
+                            playerName: playerId.value,
+                            itemId: activeItem.id,
+                            basePrice: activeItem.basePrice,
+                            amount: tradeAmount.value,
+                            decayLambda: activeItem.lambda,
+                            iota: iota.value,
+                            isPreview: true
+                        });
+                        
+                        simResult.value = res.data;
+                        const startN = res.data.effectiveN;
+                        // 如果是卖出，点向右移；买入点向左移
+                        simN.value = type === 'sell' ? startN + tradeAmount.value : Math.max(0, startN - tradeAmount.value);
+                        
+                        updatePrice();
+                        renderChart(type, startN, tradeAmount.value);
+                        showToast(`模拟${type === 'sell' ? '卖出' : '买入'}成功 (预览模式)`);
+                    } catch (e) { 
+                        showToast("模拟失败：身份验证被后端拒绝"); 
                     }
                 };
 
-                // 图表逻辑 - 适配浅色模式
-                const renderChart = (action = null, startN = 0, amount = 0) => {
-                    if (!myChart || !realItem.id) return;
-                    
-                    const env = currentEnv.value;
-                    const p0 = realItem.basePrice;
-                    const lambda = simItem.lambda;
-                    
+                const renderChart = (action, startN, amount) => {
+                    if (!myChart || !activeItem.id) return;
                     const data = [];
-                    const range = Math.max(simItem.n * 2, 5000);
-                    for(let x=0; x<=range; x+=range/200) {
-                        data.push([x, (env * p0 * Math.exp(-lambda * x))]);
+                    const maxN = Math.max(simN.value * 2, 2.0 / activeItem.lambda);
+                    const step = maxN / 120;
+                    
+                    for(let x=0; x<=maxN; x+=step) {
+                        data.push([x, currentEnv.value * activeItem.basePrice * Math.exp(-activeItem.lambda * (x + iota.value))]);
                     }
 
                     const option = {
-                        backgroundColor: 'transparent',
-                        grid: { top: 30, right: 20, bottom: 30, left: 60, borderColor: 'transparent' },
+                        grid: { top: 40, right: 30, bottom: 40, left: 60 },
                         tooltip: { 
                             trigger: 'axis', 
-                            backgroundColor: 'rgba(255, 255, 255, 0.95)', 
-                            borderColor: '#e2e8f0', 
-                            textStyle: { color: '#334155', fontFamily: 'monospace' },
-                            padding: [10, 15],
-                            extraCssText: 'box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);',
-                            formatter: (params) => {
-                                const p = params[0];
-                                return `<div class="text-xs mb-1 text-slate-500">库存: ${Math.round(p.value[0])}</div>
-                                        <div class="text-sm font-bold text-indigo-600">价格: ${p.value[1].toFixed(2)}</div>`;
-                            }
+                            formatter: (p) => `权重 N: ${p[0].value[0].toFixed(2)}<br/>价格: ${p[0].value[1].toFixed(2)}` 
                         },
-                        xAxis: { 
-                            type: 'value', 
-                            name: '库存 (N)',
-                            nameTextStyle: { color: '#94a3b8', padding: [0, 0, 0, 10] },
-                            splitLine: { lineStyle: { color: '#f1f5f9' } },
-                            axisLine: { lineStyle: { color: '#cbd5e1' } },
-                            axisLabel: { color: '#64748b', fontFamily: 'monospace' }
-                        },
-                        yAxis: { 
-                            type: 'value', 
-                            name: '价格 (Price)',
-                            nameTextStyle: { color: '#94a3b8' },
-                            splitLine: { lineStyle: { color: '#f1f5f9' } },
-                            axisLine: { show: false },
-                            axisLabel: { color: '#64748b', fontFamily: 'monospace' }
-                        },
-                        series: [
-                            {
-                                name: '价格曲线',
-                                type: 'line',
-                                smooth: true,
-                                showSymbol: false,
-                                data: data,
-                                lineStyle: { width: 3, color: '#6366f1' },
-                                areaStyle: { 
-                                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                                        {offset: 0, color: 'rgba(99,102,241,0.2)'}, 
-                                        {offset: 1, color: 'rgba(99,102,241,0)'}
-                                    ]) 
-                                }
-                            },
-                            {
-                                type: 'line',
-                                data: [[simItem.n, (env * p0 * Math.exp(-lambda * simItem.n))]],
-                                showSymbol: true,
-                                symbolSize: 12,
-                                itemStyle: { color: '#fbbf24', borderColor: '#fff', borderWidth: 2, shadowColor: 'rgba(0, 0, 0, 0.1)', shadowBlur: 4 },
-                                lineStyle: { opacity: 0 },
-                                label: { show: true, position: 'top', formatter: 'Current', color: '#94a3b8', fontSize: 10, backgroundColor: '#ffffff', borderColor: '#e2e8f0', borderWidth: 1, padding: [2,4], borderRadius: 4 }
-                            }
-                        ]
+                        xAxis: { type: 'value', name: 'N', splitLine: { lineStyle: { color: '#f1f5f9' } } },
+                        yAxis: { type: 'value', name: 'Price', splitLine: { lineStyle: { color: '#f1f5f9' } } },
+                        series: [{
+                            name: '价格曲线',
+                            type: 'line', smooth: true, data, showSymbol: false,
+                            lineStyle: { color: '#6366f1', width: 3 },
+                            areaStyle: { color: 'rgba(99,102,241,0.05)' }
+                        }, {
+                            name: '当前价格',
+                            type: 'effectScatter', data: [[simN.value, currentPrice.value]],
+                            symbolSize: 14, itemStyle: { color: '#fbbf24', borderColor: '#fff', borderWidth: 2 }
+                        }]
                     };
 
                     if(action) {
                         const x0 = action === 'buy' ? Math.max(0, startN - amount) : startN;
                         const x1 = action === 'buy' ? startN : startN + amount;
                         option.series[0].markArea = {
-                            silent: true,
-                            itemStyle: { 
-                                color: action === 'buy' ? 'rgba(244,63,94,0.1)' : 'rgba(16,185,129,0.1)',
-                                borderWidth: 1,
-                                borderType: 'dashed',
-                                borderColor: action === 'buy' ? 'rgba(244,63,94,0.4)' : 'rgba(16,185,129,0.4)'
-                            },
-                            label: {
-                                show: true,
-                                position: 'insideTop',
-                                formatter: action === 'buy' ? 'Buy' : 'Sell',
-                                color: action === 'buy' ? '#fda4af' : '#6ee7b7',
-                                fontSize: 10
-                            },
+                            itemStyle: { color: action === 'buy' ? 'rgba(244,63,94,0.1)' : 'rgba(16,185,129,0.1)' },
                             data: [[{ xAxis: x0 }, { xAxis: x1 }]]
                         };
                     }
-
                     myChart.setOption(option, true);
                 };
 
-                const resetZoom = () => { if(myChart) myChart.dispatchAction({ type: 'restore' }); };
+                const fetchMarket = async () => {
+                    try {
+                        const res = await axios.get('/api/market');
+                        items.value = res.data;
+                        serverStatus.value = true;
+                    } catch { serverStatus.value = false; }
+                };
 
-                const formatNumber = (n) => n >= 1000 ? (n/1000).toFixed(1)+'k' : Math.round(n);
-                const formatUptime = (s) => {
-                    const h = Math.floor(s / 3600);
-                    const m = Math.floor((s % 3600) / 60);
-                    return `${h}h ${m}m ${s % 60}s`;
+                const fetchConfig = async () => {
+                    try {
+                        const res = await axios.get('/api/config');
+                        config.value = res.data;
+                    } catch(e) {}
+                };
+
+                const saveConfig = async () => {
+                    try {
+                        await axios.post('/api/config', config.value);
+                        showToast("配置已持久化");
+                    } catch { showToast("保存失败"); }
+                };
+
+                const fetchMetrics = async () => {
+                    try {
+                        const res = await axios.get('/api/metrics');
+                        metrics.totalTrades = res.data.total_trades;
+                        metrics.activePlayers = res.data.active_players;
+                    } catch(e) {}
                 };
 
                 onMounted(() => {
                     lucide.createIcons();
-                    // 移除了 'dark' 主题参数，使用默认浅色主题
                     myChart = echarts.init(document.getElementById('priceChart'));
-                    
+                    fetchMarket();
                     fetchConfig();
-                    fetchMarketData();
-                    setInterval(fetchMetrics, 2000);
-                    
+                    setInterval(fetchMetrics, 3000);
                     window.addEventListener('resize', () => myChart.resize());
-                    
-                    setTimeout(() => {
-                        showToast('已连接 Economy Core 服务端', 'success');
-                    }, 500);
                 });
 
                 return {
-                    serverStatus, currentTab, searchQuery, loadingItems, metrics, config, items, filteredItems,
-                    currentEnv, currentPrice, realItem, simItem, tradeAmount, simResult,
-                    formatNumber, formatUptime, selectItem, simulateTrade, saveConfig, resetZoom,
-                    toasts, removeToast
+                    serverStatus, currentTab, searchQuery, playerId, config, items, filteredItems,
+                    activeItem, simN, currentEnv, currentPrice, tradeAmount, simResult, toasts, metrics, iota,
+                    selectItem, simulateTrade, saveConfig, fetchMarket
                 };
             }
         }).mount('#app');

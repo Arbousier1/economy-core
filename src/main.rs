@@ -7,38 +7,36 @@ use axum::{
     Router,
 };
 use parking_lot::RwLock;
-use std::{
-    collections::HashMap,
-    fs::{self, OpenOptions},
-    io::{BufWriter, Cursor, Write},
-    net::SocketAddr,
-    sync::{Arc, atomic::{AtomicU64, Ordering}},
-    time::Duration,
-};
+use std::collections::HashMap;
+use std::fs::{self, OpenOptions};
+use std::io::{BufWriter, Cursor, Write}; 
+use std::net::SocketAddr;
+use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
+use std::time::Duration;
 use tokio::{sync::mpsc, signal};
 use tower_http::{cors::CorsLayer, services::ServeDir, timeout::TimeoutLayer};
-use tracing::{error, info, warn};
+use tracing::{error, info};
 use chrono::Local;
 
 // 引入内部模块内容
-use models::*;
-use api::*;
+use crate::models::*;
 
-// --- 生产环境常量配置 ---
+// --- 常量配置 ---
 const CONFIG_FILE: &str = "config.bin";
 const HISTORY_FILE: &str = "history.bin";
-const CHANNEL_CAPACITY: usize = 20_000; // 缓冲高频交易高峰
-const MAX_CACHE_SIZE: usize = 1000;    // 内存预览历史深度
+const PLAYER_DATA_FILE: &str = "player_data.bin"; 
+const CHANNEL_CAPACITY: usize = 20_000; 
+const MAX_CACHE_SIZE: usize = 1000;    
 
-/// 生产级监控指标统计结构
+/// 全局系统指标监控
 pub struct SystemMetrics {
-    pub total_trades: AtomicU64,      // 已处理交易总数
-    pub write_failures: AtomicU64,    // 磁盘 IO 失败计数
-    pub channel_dropped: AtomicU64,   // 因通道溢出丢失的记录数
-    pub start_time: i64,              // 启动时间戳 (Unix ms)
+    pub total_trades: AtomicU64,      
+    pub write_failures: AtomicU64,    
+    pub channel_dropped: AtomicU64,   
+    pub start_time: i64,              
 }
 
-/// 全局应用状态 (共享 Context)
+/// 共享应用状态
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<RwLock<AppConfig>>,
@@ -47,9 +45,12 @@ pub struct AppState {
     pub history_cache: Arc<RwLock<Vec<TransactionRecord>>>,
     pub market_cache: Arc<RwLock<Vec<MarketItem>>>,
     pub metrics: Arc<SystemMetrics>,
+    pub player_histories: Arc<RwLock<HashMap<String, PlayerSalesHistory>>>,
 }
 
-// --- 1. 后台持久化协程 (具备安全退出逻辑) ---
+// --- 1. 后台持久化协程 (Disk IO Worker) ---
+
+/// 负责从通道接收交易记录，利用 BufWriter 批量写入磁盘，减少 IO 系统调用
 async fn background_writer_task(
     mut rx: mpsc::Receiver<TransactionRecord>,
     history_cache: Arc<RwLock<Vec<TransactionRecord>>>,
@@ -61,98 +62,76 @@ async fn background_writer_task(
         .open(HISTORY_FILE);
 
     let mut writer = match file_res {
-        Ok(f) => BufWriter::with_capacity(128 * 1024, f), // 128KB 缓冲区减少系统调用
+        Ok(f) => BufWriter::with_capacity(128 * 1024, f), // 128KB 缓冲区
         Err(e) => {
-            error!("🚨 [CRITICAL] 磁盘文件打开失败: {}. 交易记录持久化功能已瘫痪!", e);
+            error!("🚨 核心历史文件打开失败: {}", e);
             return;
         }
     };
 
     let mut flush_interval = tokio::time::interval(Duration::from_secs(5));
-    info!("💾 磁盘写入服务已就绪: 异步批量模式开启");
 
     loop {
         tokio::select! {
-            // 监听通道数据
+            // 接收新记录
             record_opt = rx.recv() => {
                 match record_opt {
                     Some(record) => {
-                        // 更新内存热缓存
+                        // 同步更新最近交易缓存 (内存)
                         {
                             let mut cache = history_cache.write();
                             cache.push(record.clone());
                             if cache.len() > MAX_CACHE_SIZE { cache.remove(0); }
                         }
 
-                        // 序列化并存入写缓冲区
+                        // 使用 bincode 高效序列化到文件流
                         if let Err(e) = bincode::serialize_into(&mut writer, &record) {
-                            error!("❌ 磁盘序列化失败: {:?}", e);
+                            error!("❌ 交易记录序列化失败: {:?}", e);
                             metrics.write_failures.fetch_add(1, Ordering::Relaxed);
                         }
                     }
                     None => {
-                        // 关键：通道所有 Sender 已关闭，执行最后刷盘并安全退出
-                        info!("👋 正在执行最终数据持久化...");
+                        info!("👋 写入通道已关闭，正在执行最终刷盘...");
                         let _ = writer.flush();
                         break; 
                     }
                 }
             }
-            // 每 5 秒强制 Flush 缓冲区，防止意外断电丢失过多数据
+            // 定时刷盘，防止意外掉电丢失太多数据
             _ = flush_interval.tick() => {
-                let _ = writer.flush();
+                let _ = writer.flush(); 
             }
         }
     }
-    info!("🛑 持久化服务已安全停止");
 }
 
-// --- 2. 跨平台优雅关机信号监听 ---
-async fn shutdown_signal() {
-    let ctrl_c = async {
-        signal::ctrl_c().await.expect("无法注册 Ctrl+C 信号处理器");
-    };
+// --- 2. 存储辅助引擎 ---
 
-    #[cfg(unix)]
-    let terminate = async {
-        signal::unix::signal(signal::unix::SignalKind::terminate())
-            .expect("无法注册 SIGTERM 信号处理器")
-            .recv()
-            .await;
-    };
-
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        _ = ctrl_c => info!("📥 接收到退出信号 (Ctrl+C)"),
-        _ = terminate => info!("📥 接收到关机信号 (SIGTERM)"),
-    }
-}
-
-// --- 3. 稳健的数据存储辅助 ---
 struct Storage;
 impl Storage {
+    /// 加载配置文件
     fn load_config() -> AppConfig {
         if let Ok(data) = fs::read(CONFIG_FILE) {
-            if let Ok(cfg) = bincode::deserialize(&data) { return cfg; }
+            if let Ok(cfg) = bincode::deserialize::<AppConfig>(&data) { return cfg; }
         }
-        warn!("⚠️ 配置损坏或不存在，正在部署初始化配置...");
         let default_cfg = AppConfig::default();
         Self::atomic_save_config(&default_cfg);
         default_cfg
     }
 
-    /// 原子替换保存配置：防止写入中途崩溃导致文件损坏
+    /// 原子化保存配置（先写临时文件再重命名，防止写入崩溃导致原文件损坏）
     pub fn atomic_save_config(cfg: &AppConfig) {
         let temp_path = format!("{}.tmp", CONFIG_FILE);
         if let Ok(data) = bincode::serialize(cfg) {
             if fs::write(&temp_path, data).is_ok() {
-                let _ = fs::rename(&temp_path, CONFIG_FILE);
+                let _ = fs::rename(&temp_path, CONFIG_FILE).unwrap_or_else(|e| {
+                    error!("❌ 重命名配置文件失败: {}", e);
+                });
             }
         }
     }
 
+    /// 加载历史记录末尾部分至内存
     fn load_history() -> Vec<TransactionRecord> {
         let mut records = Vec::with_capacity(MAX_CACHE_SIZE);
         if let Ok(data) = fs::read(HISTORY_FILE) {
@@ -167,16 +146,55 @@ impl Storage {
             records
         }
     }
+
+    /// 加载玩家抛售历史（n_eff 计算的关键）
+    fn load_player_data() -> HashMap<String, PlayerSalesHistory> {
+        if let Ok(data) = fs::read(PLAYER_DATA_FILE) {
+            if let Ok(map) = bincode::deserialize(&data) { return map; }
+        }
+        HashMap::new()
+    }
+
+    fn save_player_data(data: &HashMap<String, PlayerSalesHistory>) {
+        if let Ok(bytes) = bincode::serialize(data) {
+            let _ = fs::write(PLAYER_DATA_FILE, bytes);
+        }
+    }
 }
 
-// --- 4. 主程序流程 ---
+// --- 3. 停机信号监听 ---
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c().await.expect("无法安装 Ctrl+C 处理器");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("无法安装信号处理器")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => info!("📥 接收到 Ctrl+C，开始安全停机..."),
+        _ = terminate => info!("📥 接收到 SIGTERM，开始安全停机..."),
+    }
+}
+
+// --- 4. 主程序入口 ---
+
 #[tokio::main]
 async fn main() {
-    // 1. 初始化日志系统
+    // 初始化日志
     tracing_subscriber::fmt::init();
-    info!("🚀 Economy Core [PROD] 正在启动...");
+    info!("🚀 Economy Core (Ver 2.0) 正在启动...");
 
-    // 2. 指标与初始数据加载
+    // 1. 初始化指标监控
     let metrics = Arc::new(SystemMetrics {
         total_trades: AtomicU64::new(0),
         write_failures: AtomicU64::new(0),
@@ -184,6 +202,7 @@ async fn main() {
         start_time: Local::now().timestamp(),
     });
 
+    // 2. 加载持久化数据
     let config_data = Storage::load_config();
     let port = config_data.port;
     
@@ -191,20 +210,21 @@ async fn main() {
     let history_cache = Arc::new(RwLock::new(Storage::load_history()));
     let holidays = Arc::new(RwLock::new(api::fetch_holidays().await));
     let market_cache = Arc::new(RwLock::new(Vec::new()));
+    let player_histories = Arc::new(RwLock::new(Storage::load_player_data()));
 
-    // 3. 通道与核心异步任务
+    // 3. 开启后台异步持久化通道
     let (tx, rx) = mpsc::channel(CHANNEL_CAPACITY);
     
-    // 启动后台写入协程并保留句柄
     let writer_handle = tokio::spawn(background_writer_task(
         rx, 
         history_cache.clone(), 
         metrics.clone()
     ));
     
-    // 启动节假日定时刷新协程
+    // 4. 开启节假日自动更新任务
     tokio::spawn(api::holiday_refresh_task(holidays.clone()));
 
+    // 5. 构造应用状态
     let shared_state = AppState {
         config,
         holidays,
@@ -212,46 +232,52 @@ async fn main() {
         history_cache,
         market_cache,
         metrics,
+        player_histories,
     };
 
-    // 4. 定义路由与加固中间件
+    // 6. 路由配置
     let app = Router::new()
-        .route("/calculate_sell", post(handle_sell))
-        .route("/calculate_buy", post(handle_buy))
-        .route("/batch_sell", post(handle_batch_sell))
-        .route("/api/market/sync", post(sync_market))
-        .route("/api/market", get(get_market))
-        .route("/api/config", get(get_config).post(update_config))
-        .route("/api/history", get(get_history))
-        .route("/api/metrics", get(get_metrics))
-        .nest_service("/", ServeDir::new("static")) // 托管 index.html 所在目录
+        .route("/calculate_sell", post(api::handle_sell))
+        .route("/calculate_buy", post(api::handle_buy))
+        .route("/batch_sell", post(api::handle_batch_sell))
+        .route("/api/market/sync", post(api::sync_market))
+        .route("/api/market", get(api::get_market))
+        .route("/api/config", get(api::get_config).post(api::update_config))
+        .route("/api/history", get(api::get_history))
+        .route("/api/metrics", get(api::get_metrics))
+        .route("/api/player/:player_id", get(api::get_player_history))
+        .route("/api/player/sync", post(api::sync_player_history))
+        .nest_service("/", ServeDir::new("static")) // 托管 UI 前端
         .layer(CorsLayer::permissive())
-        .layer(TimeoutLayer::new(Duration::from_secs(10))) // 请求硬超时保护
-        .with_state(shared_state);
+        .layer(TimeoutLayer::new(Duration::from_secs(10))) 
+        .with_state(shared_state.clone());
 
-    // 5. 服务绑定与优雅停机逻辑
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    // 7. 启动 HTTP 服务
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = tokio::net::TcpListener::bind(addr).await
-        .expect("端口绑定失败，请检查 9981 是否被占用");
+        .expect("端口绑定失败，请检查端口是否被占用");
 
-    info!("✨ 系统运行中: http://{}", addr);
-
+    info!("✨ 服务已上线: http://{}", addr);
     
 
-    // Axum 阻塞主进程并等待信号
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await
         .unwrap();
 
-    // 6. 严谨收尾：触发后台写入任务退出
-    info!("⏳ 正在收尾，请勿强制关闭...");
+    // 8. 关机序列：确保所有内存数据刷回磁盘
+    info!("💾 正在持久化玩家历史数据...");
+    {
+        let data = shared_state.player_histories.read();
+        Storage::save_player_data(&data);
+        
+        let cfg = shared_state.config.read();
+        Storage::atomic_save_config(&cfg);
+    }
     
-    // 显式释放最初的 tx，当所有 handle 里的 clone tx 也随请求结束释放后，rx 将收到 None
-    drop(tx); 
-    
-    // 等待磁盘写入协程完成最后一份数据的保存
+    // 关闭 tx，通知后台写入协程刷盘并退出
+    drop(shared_state.tx); 
     let _ = writer_handle.await;
-
-    info!("🛑 Economy Core 已完全停止，数据安全。");
+    
+    info!("👋 所有数据已安全同步，服务已关闭");
 }
