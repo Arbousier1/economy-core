@@ -1,0 +1,42 @@
+[package]
+name = "economy-core"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+# --- Web Server ---
+# axum 0.7 及其核心提取器
+axum = { version = "0.7", features = ["macros"] }
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.5", features = ["fs", "cors", "add-extension"] }
+
+# --- Serialization & Data ---
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+# 二进制序列化，用于高性能本地存储
+bincode = "1.3"
+
+# --- Math & Utils ---
+# chrono 处理时间，rand 提供正态分布噪声
+chrono = { version = "0.4", features = ["serde"] }
+rand = "0.8"
+rand_distr = "0.4"
+# parking_lot 提供比标准库更快的 RwLock
+parking_lot = "0.12"
+
+# --- Networking & Concurrency ---
+# 用于获取节假日 API
+reqwest = { version = "0.11", features = ["json"] }
+# Rayon 用于高并发时的 CPU 密集型计算 (批量计算总价)
+rayon = "1.8"
+
+# --- Logging & Tracing ---
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+[profile.release]
+# 针对经济内核的生产环境优化
+lto = true
+opt-level = 3
+codegen-units = 1
+panic = 'abort'

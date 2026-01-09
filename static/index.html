@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Economy Core | 经济调控中心</title>
+    
+    <!-- 核心依赖 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        [v-cloak] { display: none !important; }
+        body { background-color: #0f172a; color: #f8fafc; }
+        
+        /* 玻璃拟态卡片 */
+        .glass-card {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        /* 输入框样式 */
+        .input-modern {
+            width: 100%;
+            background-color: #020617;
+            border: 1px solid #334155;
+            border-radius: 0.5rem;
+            padding: 0.5rem 0.75rem;
+            font-size: 0.875rem;
+            color: #e2e8f0;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+        .input-modern:focus {
+            border-color: #818cf8;
+            box-shadow: 0 0 0 1px rgba(129, 140, 248, 0.5);
+        }
+        
+        /* 图表容器 */
+        .chart-container {
+            width: 100%;
+            height: 100%;
+            min-height: 400px;
+        }
+        
+        /* 图表控件 */
+        .chart-controls {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            z-index: 10;
+            display: flex;
+            gap: 8px;
+        }
+        
+        .chart-btn {
+            background: rgba(30, 41, 59, 0.8);
+            border: 1px solid #334155;
+            border-radius: 4px;
+            padding: 4px 10px;
+            font-size: 11px;
+            color: #cbd5e1;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .chart-btn:hover {
+            background: rgba(99, 102, 241, 0.3);
+            color: white;
+        }
+        
+        .chart-btn.active {
+            background: #6366f1;
+            color: white;
+        }
+    </style>
+</head>
+<body class="h-screen overflow-hidden font-sans antialiased selection:bg-indigo-500 selection:text-white dark">
+
+    <div id="app" class="flex w-full h-full" v-cloak>
+        
+        <!-- 左侧导航栏 -->
+        <aside class="w-72 bg-slate-800 border-r border-slate-700 flex flex-col">
+            <div class="p-5 border-b border-slate-700 flex items-center gap-3">
+                <div class="relative">
+                    <div class="w-3 h-3 rounded-full transition-colors duration-500" :class="serverStatus ? 'bg-emerald-500 shadow-[0_0_10px_#10b981]' : 'bg-red-500 animate-pulse'"></div>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg tracking-tight text-white">Economy Core</h1>
+                    <p class="text-[10px] text-gray-400 font-mono">Ver 1.0.0 | {{ serverStatus ? 'Connected' : 'Disconnected' }}</p>
+                </div>
+            </div>
+
+            <!-- 搜索与同步 -->
+            <div class="p-3 border-b border-slate-700 space-y-2">
+                <div class="relative">
+                    <i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-gray-500"></i>
+                    <input v-model="searchQuery" placeholder="搜索物品 ID..." class="input-modern pl-9">
+                </div>
+                <button @click="fetchMarketData" class="w-full flex items-center justify-center gap-2 py-2 text-xs font-medium text-gray-400 hover:text-white hover:bg-white/5 rounded transition-colors group">
+                    <i data-lucide="refresh-cw" class="w-3 h-3 group-hover:rotate-180 transition-transform duration-500"></i> 同步 MC 数据
+                </button>
+            </div>
+
+            <!-- 物品列表 -->
+            <div class="flex-1 overflow-y-auto p-2 space-y-1" style="scrollbar-width: thin;">
+                <div v-if="loadingItems" class="text-center py-10 text-gray-500 text-sm">
+                    <div class="w-6 h-6 border-2 border-gray-700 border-t-indigo-500 rounded-full animate-spin mx-auto mb-2"></div>
+                    正在加载物品数据...
+                </div>
+                
+                <div v-else-if="filteredItems.length === 0" class="text-center py-10 text-gray-500 text-sm">
+                    <i data-lucide="package-x" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
+                    {{ items.length === 0 ? '暂无物品数据' : '无搜索结果' }}
+                </div>
+                
+                <div v-for="item in filteredItems" :key="item.id" 
+                     @click="selectItem(item)"
+                     class="group p-3 rounded-lg cursor-pointer transition-all border border-transparent hover:border-gray-700 hover:bg-white/5"
+                     :class="realItem.id === item.id ? 'bg-indigo-500/10 border-indigo-500/50 ring-1 ring-indigo-500/50' : ''">
+                    
+                    <div class="flex justify-between items-start mb-1">
+                        <span class="font-medium text-sm text-gray-200 truncate pr-2 group-hover:text-indigo-400">{{ item.name }}</span>
+                        <span class="text-[10px] font-mono text-gray-500 bg-black/20 px-1.5 py-0.5 rounded">{{ item.id }}</span>
+                    </div>
+                    <div class="flex justify-between items-center text-xs text-gray-400 font-mono">
+                        <span>N: {{ formatNumber(item.n) }}</span>
+                        <span class="text-amber-500">P₀: {{ item.basePrice }}</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- 主内容区域 -->
+        <main class="flex-1 flex flex-col bg-slate-900 relative overflow-hidden">
+            
+            <!-- 顶部栏 -->
+            <header class="h-16 border-b border-slate-700 bg-slate-900/80 backdrop-blur flex justify-between items-center px-6 z-10">
+                <nav class="flex p-1 bg-slate-800 rounded-lg border border-slate-700">
+                    <button @click="currentTab = 'simulation'" class="px-4 py-1.5 text-xs font-medium rounded-md transition-all flex items-center gap-2"
+                            :class="currentTab === 'simulation' ? 'bg-indigo-500 text-white shadow-lg' : 'text-gray-400 hover:text-gray-200'">
+                        <i data-lucide="activity" class="w-3 h-3"></i> 模拟与分析
+                    </button>
+                    <button @click="currentTab = 'config'" class="px-4 py-1.5 text-xs font-medium rounded-md transition-all flex items-center gap-2"
+                            :class="currentTab === 'config' ? 'bg-indigo-500 text-white shadow-lg' : 'text-gray-400 hover:text-gray-200'">
+                        <i data-lucide="settings" class="w-3 h-3"></i> 参数配置
+                    </button>
+                </nav>
+
+                <div class="flex items-center gap-4">
+                    <div class="text-right">
+                        <div class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Env Index</div>
+                        <div class="text-xl font-mono font-bold text-amber-500 leading-none">{{ currentEnv.toFixed(4) }}</div>
+                    </div>
+                </div>
+            </header>
+
+            <div class="flex-1 overflow-hidden relative">
+                
+                <!-- === TAB 1: 模拟与分析 === -->
+                <div v-show="currentTab === 'simulation'" class="absolute inset-0 flex p-6 gap-6">
+                    <!-- 左侧控制面板 -->
+                    <div class="w-80 flex flex-col gap-4 overflow-y-auto pr-2" style="scrollbar-width: thin;">
+                        <!-- 真实物品数据 -->
+                        <div class="glass-card rounded-xl p-5 border-l-4 border-l-gray-500">
+                            <h3 class="text-xs font-bold text-gray-400 uppercase mb-3 flex items-center gap-2">
+                                <i data-lucide="database" class="w-3 h-3"></i> 
+                                真实物品数据
+                                <span v-if="!realItem.id" class="text-xs text-red-400 font-normal">(未选择物品)</span>
+                            </h3>
+                            
+                            <div v-if="!realItem.id" class="text-center py-4 text-gray-500 text-sm">
+                                <i data-lucide="package-search" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
+                                <p>请在左侧选择一个物品</p>
+                            </div>
+                            
+                            <div v-else class="space-y-3">
+                                <div class="flex justify-between items-center border-b border-white/5 pb-2">
+                                    <span class="text-sm text-gray-300">{{ realItem.name }}</span>
+                                    <span class="text-xs font-mono text-gray-500">{{ realItem.id }}</span>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <div class="text-[10px] text-gray-500">库存 (N)</div>
+                                        <div class="font-mono text-sm text-gray-200">{{ formatNumber(realItem.n) }}</div>
+                                    </div>
+                                    <div>
+                                        <div class="text-[10px] text-gray-500">基础价 (P₀)</div>
+                                        <div class="font-mono text-sm text-amber-500">{{ realItem.basePrice }}</div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="text-[10px] text-gray-500">衰减系数 (λ)</div>
+                                    <div class="font-mono text-xs text-blue-300">{{ realItem.lambda }}</div>
+                                </div>
+                                <div>
+                                    <div class="text-[10px] text-gray-500">当前价格 (P)</div>
+                                    <div class="font-mono text-sm text-emerald-500">{{ currentPrice.toFixed(2) }}</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 模拟沙盒 -->
+                        <div class="glass-card rounded-xl p-5 border-l-4 border-l-indigo-500 flex-1">
+                            <h3 class="text-xs font-bold text-indigo-400 uppercase mb-3 flex items-center gap-2">
+                                <i data-lucide="flask-conical" class="w-3 h-3"></i> 模拟沙盒
+                            </h3>
+                            
+                            <div v-if="!realItem.id" class="text-center py-6 text-gray-500 text-sm">
+                                <i data-lucide="flask-conical-off" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
+                                <p>请先选择物品以启用模拟功能</p>
+                            </div>
+                            
+                            <div v-else class="space-y-4">
+                                <div>
+                                    <label class="text-xs text-gray-500 mb-1 block">模拟库存 (Sim N)</label>
+                                    <input type="number" v-model.number="simItem.n" class="input-modern">
+                                </div>
+                                <div>
+                                    <label class="text-xs text-gray-500 mb-1 block">模拟 Lambda</label>
+                                    <input type="number" step="0.00001" v-model.number="simItem.lambda" class="input-modern">
+                                </div>
+
+                                <div class="pt-4 border-t border-white/5">
+                                    <label class="text-xs font-bold text-gray-300 mb-2 block">交易模拟</label>
+                                    <div class="flex gap-2 mb-2">
+                                        <button v-for="amt in [1, 64, 1728]" :key="amt" 
+                                                @click="tradeAmount = amt" 
+                                                class="px-3 py-1 rounded bg-slate-900 border border-slate-700 text-xs text-gray-400 hover:text-white transition-colors"
+                                                :class="tradeAmount === amt ? 'border-indigo-500 text-indigo-500' : ''">
+                                            {{ amt }}
+                                        </button>
+                                    </div>
+                                    <input type="number" v-model.number="tradeAmount" class="input-modern text-center h-8 mb-2">
+                                    <div class="grid grid-cols-2 gap-3 mt-3">
+                                        <button @click="simulateTrade('buy')" 
+                                                class="py-2 rounded bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-1"
+                                                :disabled="!realItem.id">
+                                            <i data-lucide="trending-up" class="w-3 h-3"></i> 买入 (Buy)
+                                        </button>
+                                        <button @click="simulateTrade('sell')" 
+                                                class="py-2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500 hover:text-white text-xs font-bold transition-all flex items-center justify-center gap-1"
+                                                :disabled="!realItem.id">
+                                            <i data-lucide="trending-down" class="w-3 h-3"></i> 卖出 (Sell)
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div v-if="simResult" class="mt-4 p-3 bg-black/30 rounded border border-white/5">
+                                    <div class="flex justify-between items-center mb-1">
+                                        <span class="text-[10px] text-gray-500">交易总额</span>
+                                        <span class="font-mono font-bold text-amber-500">{{ simResult.total_price.toFixed(2) }}</span>
+                                    </div>
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-[10px] text-gray-500">平均单价</span>
+                                        <span class="font-mono text-xs text-blue-300">{{ simResult.unit_price_avg.toFixed(2) }}</span>
+                                    </div>
+                                    <div class="flex justify-between items-center mt-2 pt-2 border-t border-white/10">
+                                        <span class="text-[10px] text-gray-500">环境指数</span>
+                                        <span class="font-mono text-xs text-green-300">{{ simResult.env_index.toFixed(4) }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 图表区域 -->
+                    <div class="flex-1 glass-card rounded-xl overflow-hidden p-1 flex flex-col relative">
+                        <!-- 图表控制按钮 -->
+                        <div class="chart-controls">
+                            <button @click="toggleShowRealCurve" 
+                                    class="chart-btn" 
+                                    :class="showRealCurve ? 'active' : ''"
+                                    :disabled="!realItem.id">
+                                <i data-lucide="git-branch" class="w-3 h-3 inline mr-1"></i>
+                                真实曲线
+                            </button>
+                            <button @click="toggleShowSimCurve" 
+                                    class="chart-btn" 
+                                    :class="showSimCurve ? 'active' : ''"
+                                    :disabled="!realItem.id">
+                                <i data-lucide="git-merge" class="w-3 h-3 inline mr-1"></i>
+                                模拟曲线
+                            </button>
+                            <button @click="resetZoom" class="chart-btn">
+                                <i data-lucide="zoom-out" class="w-3 h-3 inline mr-1"></i>
+                                重置视图
+                            </button>
+                        </div>
+                        
+                        <!-- 图表容器 -->
+                        <div id="priceChart" class="chart-container">
+                            <div v-if="!realItem.id" class="flex items-center justify-center h-full text-gray-500">
+                                <div class="text-center">
+                                    <i data-lucide="line-chart" class="w-16 h-16 mx-auto mb-4 opacity-50"></i>
+                                    <p class="text-sm">请选择一个物品来查看价格曲线</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 图例 -->
+                        <div v-if="realItem.id" class="absolute bottom-4 left-4 flex gap-4 text-xs">
+                            <div class="flex items-center gap-1" v-if="showRealCurve">
+                                <div class="w-3 h-0.5 bg-amber-500"></div>
+                                <span class="text-gray-300">真实物品曲线</span>
+                            </div>
+                            <div class="flex items-center gap-1" v-if="showSimCurve">
+                                <div class="w-3 h-0.5 bg-indigo-500"></div>
+                                <span class="text-gray-300">模拟曲线</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- === TAB 2: 参数配置 === -->
+                <div v-show="currentTab === 'config'" class="absolute inset-0 overflow-y-auto p-8" style="scrollbar-width: thin;">
+                    <!-- 配置界面保持不变 -->
+                    <div v-if="!config" class="flex items-center justify-center h-full">
+                        <div class="text-center">
+                            <div class="w-10 h-10 border-3 border-gray-700 border-t-indigo-500 rounded-full animate-spin mx-auto mb-4"></div>
+                            <p class="text-gray-400">正在加载配置...</p>
+                        </div>
+                    </div>
+                    
+                    <div v-else class="max-w-5xl mx-auto space-y-8">
+                        <!-- 配置内容保持不变 -->
+                        <div class="flex justify-between items-end border-b border-slate-700 pb-4">
+                            <div>
+                                <h2 class="text-2xl font-bold text-white">全局参数设置</h2>
+                                <p class="text-sm text-gray-400 mt-1">这里的值将直接写入 Rust 后端配置文件</p>
+                            </div>
+                            <button @click="saveConfig" :disabled="saving" 
+                                    class="px-6 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg shadow-lg flex items-center gap-2 disabled:opacity-50 transition-all">
+                                <i v-if="!saving" data-lucide="save" class="w-4 h-4"></i>
+                                <i v-if="saving" data-lucide="loader" class="w-4 h-4 animate-spin"></i>
+                                {{ saving ? '保存中...' : '应用修改' }}
+                            </button>
+                        </div>
+                        
+                        <!-- 配置表单保持不变 -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            <!-- 基础环境配置 -->
+                            <div class="glass-card p-6 rounded-xl space-y-4">
+                                <div class="flex items-center gap-2 text-indigo-400 mb-2">
+                                    <i data-lucide="globe-2" class="w-5 h-5"></i>
+                                    <h3 class="font-bold">基础环境 (Base)</h3>
+                                </div>
+                                <div class="space-y-4">
+                                    <div>
+                                        <label class="text-xs text-gray-500 mb-1 block">基础指数 (Base Index)</label>
+                                        <input type="number" step="0.01" v-model.number="config.base_env_index" class="input-modern">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-500 mb-1 block">随机波动 (Noise)</label>
+                                        <input type="number" step="0.001" v-model.number="config.noise_std" class="input-modern">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-500 mb-1 block">买入溢价 (Premium)</label>
+                                        <input type="number" step="0.01" v-model.number="config.buy_premium" class="input-modern">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- 其他配置项保持不变 -->
+                            <div class="glass-card p-6 rounded-xl space-y-4">
+                                <div class="flex items-center gap-2 text-emerald-500 mb-2">
+                                    <i data-lucide="percent" class="w-5 h-5"></i>
+                                    <h3 class="font-bold">减益系数 (Factors)</h3>
+                                </div>
+                                <div class="space-y-4">
+                                    <div>
+                                        <label class="text-xs text-gray-500 mb-1 block">法定节假日 (Public Holiday)</label>
+                                        <input type="number" step="0.01" v-model.number="config.public_holiday_factor" class="input-modern">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-500 mb-1 block">周末 (Weekend)</label>
+                                        <input type="number" step="0.01" v-model.number="config.weekend_factor" class="input-modern">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-500 mb-1 block">寒暑假 (Vacation)</label>
+                                        <input type="number" step="0.01" v-model.number="config.holiday_factor" class="input-modern">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="glass-card p-6 rounded-xl space-y-4 lg:col-span-1 md:col-span-2">
+                                <div class="flex items-center gap-2 text-amber-500 mb-2">
+                                    <i data-lucide="calendar-range" class="w-5 h-5"></i>
+                                    <h3 class="font-bold">日期范围 (MM-DD)</h3>
+                                </div>
+                                <div class="space-y-4">
+                                    <div class="bg-black/20 p-4 rounded-lg border border-white/5">
+                                        <h4 class="text-xs font-bold text-gray-300 mb-3 flex items-center gap-2">
+                                            <i data-lucide="snowflake" class="w-3 h-3 text-blue-300"></i> 寒假 (Winter)
+                                        </h4>
+                                        <div class="flex items-center gap-3">
+                                            <input v-model="config.winter_start" class="input-modern text-center" placeholder="12-20">
+                                            <span class="text-gray-600 text-sm">至</span>
+                                            <input v-model="config.winter_end" class="input-modern text-center" placeholder="02-15">
+                                        </div>
+                                    </div>
+                                    <div class="bg-black/20 p-4 rounded-lg border border-white/5">
+                                        <h4 class="text-xs font-bold text-gray-300 mb-3 flex items-center gap-2">
+                                            <i data-lucide="sun" class="w-3 h-3 text-orange-300"></i> 暑假 (Summer)
+                                        </h4>
+                                        <div class="flex items-center gap-3">
+                                            <input v-model="config.summer_start" class="input-modern text-center" placeholder="06-20">
+                                            <span class="text-gray-600 text-sm">至</span>
+                                            <input v-model="config.summer_end" class="input-modern text-center" placeholder="09-01">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 逻辑脚本 -->
+    <script>
+        const { createApp, ref, reactive, onMounted, computed, watch } = Vue;
+
+        createApp({
+            setup() {
+                const serverStatus = ref(false);
+                const currentTab = ref('simulation');
+                const saving = ref(false);
+                const searchQuery = ref('');
+                const loadingItems = ref(false);
+                
+                // 图表显示控制
+                const showRealCurve = ref(true);
+                const showSimCurve = ref(true);
+                const chartZoomed = ref(false);
+
+                // 数据状态 - 全部从后端获取
+                const config = ref(null);
+                const items = ref([]); // 从后端获取物品列表
+                
+                const currentEnv = ref(1.0);
+                const currentPrice = ref(0);
+
+                const realItem = reactive({ id: '', name: '', basePrice: 0, n: 0, lambda: 0 });
+                const simItem = reactive({ n: 0, lambda: 0 });
+                const tradeAmount = ref(64);
+                const simResult = ref(null);
+
+                let myChart = null;
+                const API_BASE = ''; // 根据实际后端地址修改，例如: 'http://localhost:8080'
+
+                const filteredItems = computed(() => {
+                    if (!searchQuery.value) return items.value;
+                    const q = searchQuery.value.toLowerCase();
+                    return items.value.filter(i => 
+                        i.name.toLowerCase().includes(q) || 
+                        i.id.toLowerCase().includes(q)
+                    );
+                });
+
+                const formatNumber = (num) => {
+                    if (typeof num !== 'number') return '0';
+                    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+                    if (num >= 1000) return (num / 1000).toFixed(1) + 'k';
+                    return Math.round(num);
+                };
+
+                const fetchConfig = async () => {
+                    try {
+                        const response = await axios.get(`${API_BASE}/api/config`);
+                        config.value = response.data;
+                        currentEnv.value = config.value.base_env_index || 1.0;
+                        serverStatus.value = true;
+                        console.log('配置加载成功:', config.value);
+                    } catch (error) { 
+                        console.error('获取配置失败:', error);
+                        serverStatus.value = false;
+                        
+                        // 如果后端没有响应，提供一个默认配置以便测试
+                        config.value = {
+                            base_env_index: 1.0,
+                            noise_std: 0.02,
+                            buy_premium: 1.25,
+                            public_holiday_factor: 0.15,
+                            weekend_factor: 0.1,
+                            holiday_factor: 0.2,
+                            winter_start: "12-20",
+                            winter_end: "02-15",
+                            summer_start: "06-20",
+                            summer_end: "09-01"
+                        };
+                        console.warn('使用默认配置，因为后端API不可用');
+                    }
+                };
+
+                const fetchMarketData = async () => {
+                    loadingItems.value = true;
+                    try {
+                        const response = await axios.get(`${API_BASE}/api/market`);
+                        
+                        // 假设后端返回格式为 [{id, name, base_price, n, lambda}, ...]
+                        items.value = response.data.map(item => ({
+                            id: item.id,
+                            name: item.name || item.id, // 如果后端没有提供name，使用id
+                            basePrice: item.base_price,
+                            n: item.n,
+                            lambda: item.lambda
+                        }));
+                        
+                        serverStatus.value = true;
+                        console.log('物品数据加载成功，共', items.value.length, '个物品');
+                        
+                        // 如果还没有选择物品，且列表不为空，默认选择第一个
+                        if (!realItem.id && items.value.length > 0) {
+                            selectItem(items.value[0]);
+                        }
+                    } catch (error) { 
+                        console.error('获取市场数据失败:', error);
+                        serverStatus.value = false;
+                        items.value = [];
+                        alert('无法加载物品数据，请检查后端服务是否运行正常');
+                    } finally {
+                        loadingItems.value = false;
+                    }
+                };
+
+                const selectItem = (item) => {
+                    Object.assign(realItem, JSON.parse(JSON.stringify(item)));
+                    simItem.n = realItem.n;
+                    simItem.lambda = realItem.lambda;
+                    simResult.value = null;
+                    
+                    // 计算当前价格
+                    currentPrice.value = currentEnv.value * realItem.basePrice * Math.exp(-realItem.lambda * realItem.n);
+                    
+                    // 重新渲染图表
+                    if (myChart) {
+                        renderChart();
+                    }
+                };
+
+                const simulateTrade = async (type) => {
+                    if (!realItem.id) {
+                        alert('请先选择一个物品');
+                        return;
+                    }
+                    
+                    try {
+                        const endpoint = type === 'buy' ? '/calculate_buy' : '/calculate_sell';
+                        const payload = {
+                            base_price: realItem.basePrice,
+                            start_n: simItem.n,
+                            amount: tradeAmount.value,
+                            decay_lambda: simItem.lambda,
+                            is_preview: true
+                        };
+                        
+                        const response = await axios.post(`${API_BASE}${endpoint}`, payload);
+                        simResult.value = response.data;
+                        currentEnv.value = response.data.env_index;
+                        
+                        // 更新模拟库存
+                        if (type === 'buy') {
+                            simItem.n -= tradeAmount.value;
+                        } else {
+                            simItem.n += tradeAmount.value;
+                        }
+                        
+                        renderChart(type, simItem.n, tradeAmount.value);
+                    } catch (error) { 
+                        console.error('交易模拟失败:', error);
+                        
+                        // 如果后端API不可用，使用本地模拟
+                        console.warn('后端API不可用，使用本地模拟计算');
+                        const basePrice = realItem.basePrice;
+                        const env = currentEnv.value;
+                        const lambda = simItem.lambda;
+                        const startN = simItem.n;
+                        const amount = tradeAmount.value;
+                        const buyPremium = config.value?.buy_premium || 1.25;
+                        
+                        let totalPrice = 0;
+                        for (let i = 0; i < amount; i++) {
+                            const n = type === 'buy' ? startN - i - 1 : startN + i;
+                            const price = env * basePrice * Math.exp(-lambda * n);
+                            totalPrice += type === 'buy' ? price * buyPremium : price;
+                        }
+                        
+                        const unitPriceAvg = totalPrice / amount;
+                        
+                        simResult.value = {
+                            total_price: totalPrice,
+                            unit_price_avg: unitPriceAvg,
+                            env_index: currentEnv.value
+                        };
+                        
+                        // 更新模拟库存
+                        if (type === 'buy') {
+                            simItem.n -= amount;
+                        } else {
+                            simItem.n += amount;
+                        }
+                        
+                        renderChart(type, startN, amount);
+                    }
+                };
+
+                const saveConfig = async () => {
+                    if (!config.value) return;
+                    saving.value = true;
+                    try { 
+                        await axios.post(`${API_BASE}/api/config`, config.value);
+                        alert('配置保存成功！');
+                    } catch (error) { 
+                        console.error('保存配置失败:', error);
+                        alert("保存失败: " + error.message); 
+                    } finally {
+                        setTimeout(() => saving.value = false, 800);
+                    }
+                };
+
+                const toggleShowRealCurve = () => {
+                    if (!realItem.id) return;
+                    showRealCurve.value = !showRealCurve.value;
+                    renderChart();
+                };
+
+                const toggleShowSimCurve = () => {
+                    if (!realItem.id) return;
+                    showSimCurve.value = !showSimCurve.value;
+                    renderChart();
+                };
+
+                const resetZoom = () => {
+                    chartZoomed.value = false;
+                    renderChart();
+                };
+
+                const renderChart = (actionType = null, startN = 0, amount = 0) => {
+                    if (!myChart || !realItem.id) return;
+                    
+                    const env = currentEnv.value;
+                    const series = [];
+                    const legendData = [];
+                    
+                    // 1. 真实物品曲线
+                    if (showRealCurve.value) {
+                        const p0 = realItem.basePrice;
+                        const lambda = realItem.lambda;
+                        
+                        // 确定X轴范围
+                        let minX = 0;
+                        let maxX = 50000; // 默认最大值
+                        
+                        // 如果有真实库存数据，以其为中心
+                        if (realItem.n > 0) {
+                            maxX = Math.max(realItem.n * 2, 10000);
+                        }
+                        
+                        // 生成真实曲线数据点
+                        const realData = [];
+                        const step = maxX / 200;
+                        for (let x = minX; x <= maxX; x += step) {
+                            const y = env * p0 * Math.exp(-lambda * x);
+                            realData.push([x, y]);
+                        }
+                        
+                        series.push({
+                            name: '真实物品',
+                            type: 'line',
+                            smooth: true,
+                            showSymbol: false,
+                            data: realData,
+                            lineStyle: {
+                                width: 3,
+                                color: '#f59e0b',
+                                shadowBlur: 10,
+                                shadowColor: 'rgba(245, 158, 11, 0.3)'
+                            },
+                            z: 10
+                        });
+                        
+                        // 添加真实库存标记线
+                        if (realItem.n > 0) {
+                            const realPrice = env * p0 * Math.exp(-lambda * realItem.n);
+                            series.push({
+                                name: '真实库存点',
+                                type: 'scatter',
+                                data: [[realItem.n, realPrice]],
+                                symbolSize: 12,
+                                itemStyle: {
+                                    color: '#f59e0b',
+                                    borderColor: '#ffffff',
+                                    borderWidth: 2
+                                },
+                                label: {
+                                    show: true,
+                                    position: 'top',
+                                    formatter: '真实库存',
+                                    color: '#f59e0b',
+                                    fontSize: 10,
+                                    backgroundColor: 'rgba(15, 23, 42, 0.8)',
+                                    padding: [2, 5],
+                                    borderRadius: 3
+                                },
+                                z: 20
+                            });
+                        }
+                        
+                        legendData.push('真实物品');
+                    }
+                    
+                    // 2. 模拟曲线
+                    if (showSimCurve.value) {
+                        const p0 = realItem.basePrice;
+                        const lambda = simItem.lambda || realItem.lambda;
+                        const simN = simItem.n || realItem.n;
+                        
+                        // 确定模拟曲线的X轴范围
+                        let minX = Math.max(0, simN - 5000);
+                        let maxX = simN + 5000;
+                        
+                        // 确保至少有一定范围
+                        if (maxX - minX < 1000) {
+                            maxX = minX + 1000;
+                        }
+                        
+                        // 生成模拟曲线数据点
+                        const simData = [];
+                        const step = (maxX - minX) / 200;
+                        for (let x = minX; x <= maxX; x += step) {
+                            const y = env * p0 * Math.exp(-lambda * x);
+                            simData.push([x, y]);
+                        }
+                        
+                        series.push({
+                            name: '模拟曲线',
+                            type: 'line',
+                            smooth: true,
+                            showSymbol: false,
+                            data: simData,
+                            lineStyle: {
+                                width: 3,
+                                color: '#6366f1',
+                                shadowBlur: 10,
+                                shadowColor: 'rgba(99, 102, 241, 0.3)'
+                            },
+                            z: 5
+                        });
+                        
+                        // 添加模拟库存标记线
+                        if (simN > 0) {
+                            const simPrice = env * p0 * Math.exp(-lambda * simN);
+                            series.push({
+                                name: '模拟库存点',
+                                type: 'scatter',
+                                data: [[simN, simPrice]],
+                                symbolSize: 12,
+                                itemStyle: {
+                                    color: '#6366f1',
+                                    borderColor: '#ffffff',
+                                    borderWidth: 2
+                                },
+                                label: {
+                                    show: true,
+                                    position: 'bottom',
+                                    formatter: '模拟位置',
+                                    color: '#6366f1',
+                                    fontSize: 10,
+                                    backgroundColor: 'rgba(15, 23, 42, 0.8)',
+                                    padding: [2, 5],
+                                    borderRadius: 3
+                                },
+                                z: 20
+                            });
+                        }
+                        
+                        legendData.push('模拟曲线');
+                    }
+                    
+                    // 3. 交易区域标记
+                    if (actionType && amount > 0) {
+                        const x0 = actionType === 'buy' ? startN - amount : startN;
+                        const x1 = actionType === 'buy' ? startN : startN + amount;
+                        
+                        series.push({
+                            name: '交易区域',
+                            type: 'line',
+                            markArea: {
+                                silent: true,
+                                itemStyle: {
+                                    color: actionType === 'buy' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)'
+                                },
+                                data: [[
+                                    { xAxis: x0 },
+                                    { xAxis: x1 }
+                                ]]
+                            },
+                            z: 1
+                        });
+                    }
+                    
+                    const option = {
+                        backgroundColor: 'transparent',
+                        animation: true,
+                        animationDuration: 1000,
+                        tooltip: {
+                            trigger: 'axis',
+                            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                            borderColor: '#334155',
+                            borderWidth: 1,
+                            textStyle: {
+                                color: '#f8fafc',
+                                fontSize: 12
+                            },
+                            axisPointer: {
+                                type: 'cross',
+                                lineStyle: {
+                                    color: '#475569',
+                                    width: 1,
+                                    type: 'dashed'
+                                },
+                                crossStyle: {
+                                    color: '#475569'
+                                },
+                                label: {
+                                    backgroundColor: '#334155',
+                                    color: '#f8fafc'
+                                }
+                            },
+                            formatter: function(params) {
+                                let result = `<div style="margin-bottom: 5px; font-weight: bold; color: #94a3b8;">${realItem.name} 价格曲线</div>`;
+                                params.forEach(item => {
+                                    if (item.seriesType === 'line') {
+                                        result += `
+                                            <div style="margin: 2px 0;">
+                                                <span style="display:inline-block;width:10px;height:2px;background:${item.color};margin-right:5px;vertical-align:middle;"></span>
+                                                ${item.seriesName}：
+                                                <span style="color:#60a5fa;font-family:monospace;">N=${Math.round(item.value[0])}</span>,
+                                                <span style="color:#f59e0b;font-family:monospace;">P=${item.value[1].toFixed(2)}</span>
+                                            </div>
+                                        `;
+                                    }
+                                });
+                                result += `<div style="margin-top: 5px; color: #64748b; font-size: 11px;">环境指数: ${env.toFixed(4)}</div>`;
+                                return result;
+                            }
+                        },
+                        grid: {
+                            left: 60,
+                            right: 40,
+                            bottom: 50,
+                            top: 40,
+                            containLabel: false
+                        },
+                        xAxis: {
+                            type: 'value',
+                            name: '库存量 (N)',
+                            nameLocation: 'middle',
+                            nameGap: 30,
+                            nameTextStyle: {
+                                color: '#94a3b8',
+                                fontSize: 12,
+                                fontWeight: 'bold'
+                            },
+                            axisLine: {
+                                lineStyle: {
+                                    color: '#475569'
+                                }
+                            },
+                            axisLabel: {
+                                color: '#94a3b8',
+                                fontSize: 11,
+                                fontFamily: 'JetBrains Mono, Menlo, monospace'
+                            },
+                            splitLine: {
+                                show: true,
+                                lineStyle: {
+                                    color: '#1e293b',
+                                    type: 'dashed'
+                                }
+                            },
+                            min: 0
+                        },
+                        yAxis: {
+                            type: 'value',
+                            name: '单价 (P)',
+                            nameLocation: 'middle',
+                            nameGap: 40,
+                            nameTextStyle: {
+                                color: '#94a3b8',
+                                fontSize: 12,
+                                fontWeight: 'bold'
+                            },
+                            axisLine: {
+                                lineStyle: {
+                                    color: '#475569'
+                                }
+                            },
+                            axisLabel: {
+                                color: '#94a3b8',
+                                fontSize: 11,
+                                fontFamily: 'JetBrains Mono, Menlo, monospace',
+                                formatter: function(value) {
+                                    if (value >= 1000) return (value / 1000).toFixed(1) + 'k';
+                                    return value.toFixed(0);
+                                }
+                            },
+                            splitLine: {
+                                show: true,
+                                lineStyle: {
+                                    color: '#1e293b',
+                                    type: 'dashed'
+                                }
+                            },
+                            min: 0
+                        },
+                        legend: {
+                            show: true,
+                            top: 5,
+                            right: 10,
+                            textStyle: {
+                                color: '#94a3b8',
+                                fontSize: 11
+                            },
+                            itemWidth: 12,
+                            itemHeight: 2,
+                            itemGap: 5
+                        },
+                        series: series
+                    };
+                    
+                    myChart.setOption(option, true);
+                };
+
+                onMounted(async () => {
+                    // 初始化图标
+                    if (window.lucide) {
+                        lucide.createIcons();
+                    }
+                    
+                    // 初始化图表
+                    const chartDom = document.getElementById('priceChart');
+                    if (chartDom) {
+                        myChart = echarts.init(chartDom, 'dark', {
+                            renderer: 'canvas',
+                            width: 'auto',
+                            height: 'auto'
+                        });
+                        
+                        // 响应式调整图表大小
+                        window.addEventListener('resize', () => {
+                            if (myChart) {
+                                myChart.resize();
+                            }
+                        });
+                    }
+                    
+                    // 先获取配置
+                    await fetchConfig();
+                    
+                    // 然后获取物品数据
+                    await fetchMarketData();
+                    
+                    // 监听模拟参数变化
+                    watch(() => [simItem.n, simItem.lambda], () => {
+                        if (realItem.id) {
+                            renderChart();
+                        }
+                    }, { deep: true });
+                    
+                    // 监听显示控制变化
+                    watch(() => [showRealCurve.value, showSimCurve.value], () => {
+                        if (realItem.id) {
+                            renderChart();
+                        }
+                    });
+                });
+
+                return {
+                    serverStatus,
+                    currentTab,
+                    saving,
+                    searchQuery,
+                    config,
+                    items,
+                    filteredItems,
+                    currentEnv,
+                    currentPrice,
+                    realItem,
+                    simItem,
+                    tradeAmount,
+                    simResult,
+                    showRealCurve,
+                    showSimCurve,
+                    loadingItems,
+                    fetchMarketData,
+                    selectItem,
+                    simulateTrade,
+                    saveConfig,
+                    toggleShowRealCurve,
+                    toggleShowSimCurve,
+                    resetZoom,
+                    formatNumber
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
