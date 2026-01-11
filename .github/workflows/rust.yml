@@ -1,4 +1,4 @@
-name: Rust Build
+name: Rust Build & Artifact
 
 on:
   push:
@@ -8,20 +8,39 @@ on:
 
 jobs:
   build:
+    name: Build economy-core
+    # 推荐使用 ubuntu-latest，构建速度最快且依赖处理最简单
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # 关键步骤：安装 LLVM 和 Clang 
+      # 这是为了解决 aws-lc-rs 在编译时需要的 bindgen 环境
+      - name: Install LLVM and Clang
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm-dev libclang-dev clang
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      # 关键步骤：启用 Rust 编译缓存
+      # 这可以让你原本 10 分钟的构建在第二次只需 2 分钟
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
 
       - name: Build release
         run: cargo build --release
 
+      # 上传构建产物
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: rust-binary  # 下载时的压缩包名称
-          path: target/release/economy-core  # 替换为你的二进制文件名
+          name: economy-core-linux
+          # 注意：如果在 Windows 上运行，路径需改为 target/release/economy-core.exe
+          path: target/release/economy-core
+          if-no-files-found: error
