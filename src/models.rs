@@ -1,180 +1,189 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use bincode::{Encode, Decode};
+use std::borrow::Cow;
+use rustc_hash::FxHashMap; // 需要在 Cargo.toml 添加 rustc_hash = "2.1.0"
 
-// --- 1. 全局配置模型 ---
+// =========================================================================
+// 1. 宏与工具方法 (Macros & Utilities)
+// =========================================================================
 
-/// 全局经济环境配置
-/// 存储于 config.bin，控制整个插件的核心参数
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
+macro_rules! serializable {
+    ($struct_name:ident) => {
+        #[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
+        #[serde(rename_all = "camelCase")]
+    };
+}
+
+macro_rules! web_model {
+    ($struct_name:ident) => {
+        #[derive(Debug, Clone, Serialize, Deserialize)]
+        #[serde(rename_all = "camelCase")]
+    };
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ModelError {
+    #[error("无效的价格数值: {0}")]
+    InvalidPrice(f64),
+    #[error("物品 ID 不能为空")]
+    EmptyId,
+}
+
+// =========================================================================
+// 2. 默认值与性能常量 (Performance Constants)
+// =========================================================================
+
+mod defaults {
+    use std::borrow::Cow;
+    pub const PORT: u16 = 9981;
+    pub const VERSION: u32 = 1;
+    pub const BUY_PREMIUM: f64 = 1.25;
+    pub const UNKNOWN: Cow<'static, str> = Cow::Borrowed("Unknown");
+
+    pub fn port() -> u16 { PORT }
+    pub fn version() -> u32 { VERSION }
+    pub fn buy_premium() -> f64 { BUY_PREMIUM }
+    pub fn cow_unknown() -> Cow<'static, str> { UNKNOWN }
+}
+
+// =========================================================================
+// 3. 配置模型 (Optimized Memory Layout)
+// =========================================================================
+
+serializable!(AppConfig);
 pub struct AppConfig {
-    #[serde(default = "default_port")]
+    // 按照内存步长由大到小排列，减少 Padding
+    pub global_iota: f64,
+    pub base_env_index: f64,
+    pub noise_std: f64,
+    pub weekend_factor: f64,
+    pub holiday_factor: f64,
+    pub public_holiday_factor: f64,
+    pub buy_premium: f64,
+    pub recovery_delta: f64,
+    pub recovery_tau: f64,
+    pub version: u32,
     pub port: u16,
-
-    /// 服务器运行模式：true 则强制 Mojang API 校验，false 则允许离线 UUID
-    /// 该字段由服务器启动时加载，前端仅作只读展示
     pub is_online_mode: bool,
-
-    // 基础经济参数
-    pub base_env_index: f64,         // 基础环境指数 ε0 (默认 1.0)
-    pub noise_std: f64,              // 高斯噪声标准差 (随机价格波动)
-    pub weekend_factor: f64,         // 周末对环境指数的减损
-    pub holiday_factor: f64,         // 寒暑假对环境指数的减损
-    pub public_holiday_factor: f64,  // 法定节假日对环境指数的减损
-    pub buy_premium: f64,            // 玩家买入时的溢价倍率 (Spread，如 1.25 代表买入比卖出贵 25%)
-    
-    // 时间恢复参数 (Time-Decay)
-    pub recovery_delta: f64,         // 基础恢复率 δ (每单位时间恢复的比例)
-    pub recovery_tau: f64,           // 时间常数 τ (如 3600 代表以小时为单位进行恢复)
-
-    // 日期范围配置 (格式 "MM-DD"，用于环境因子判定)
-    pub winter_start: String,       
-    pub winter_end: String,         
-    pub summer_start: String,       
-    pub summer_end: String,
-
-    #[serde(default = "default_version")]
-    pub version: u32,               // 配置文件版本号
+    pub winter_start: Cow<'static, str>,
+    pub winter_end: Cow<'static, str>,
+    pub summer_start: Cow<'static, str>,
+    pub summer_end: Cow<'static, str>,
 }
 
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            port: 9981,
-            is_online_mode: false, // 默认为离线模式，可在配置文件或后台修改
+            global_iota: 0.0,
             base_env_index: 1.0,
             noise_std: 0.025,
             weekend_factor: 0.02,
             holiday_factor: 0.15,
             public_holiday_factor: 0.10,
-            buy_premium: 1.25,
+            buy_premium: defaults::BUY_PREMIUM,
             recovery_delta: 0.05,
             recovery_tau: 3600.0,
-            winter_start: "01-15".to_string(),
-            winter_end: "02-20".to_string(),
-            summer_start: "07-01".to_string(),
-            summer_end: "08-31".to_string(),
-            version: 1,
+            version: defaults::VERSION,
+            port: defaults::PORT,
+            is_online_mode: false,
+            winter_start: "01-15".into(),
+            winter_end: "02-20".into(),
+            summer_start: "07-01".into(),
+            summer_end: "08-31".into(),
         }
     }
 }
 
-// --- 2. 交易核心模型 ---
+// =========================================================================
+// 4. 市场与物品模型 (Alloc-Reduction)
+// =========================================================================
 
-/// 交易请求
-#[derive(Deserialize, Serialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct TradeRequest {
-    pub player_id: String,      // 玩家 UUID
-    pub player_name: String,    // 玩家名 (用于离线模式识别及审计)
-    pub item_id: String,        // 物品 ID (如 minecraft:iron_ingot)
-    pub base_price: f64,        // P0: 物品的基础单价
-    pub amount: f64,            // Δn: 交易数量
-    pub decay_lambda: f64,      // λ: 价格衰减系数
-    
+serializable!(MarketItem);
+pub struct MarketItem {
+    #[serde(alias = "key")] 
+    pub id: String, // ID 由于经常从 Java 动态生成，保留 String
+    #[serde(default = "defaults::cow_unknown")]
+    pub name: Cow<'static, str>, // 使用 Cow 减少堆分配
+    pub base_price: f64,
+    pub lambda: f64,
     #[serde(default)]
-    pub iota: Option<f64>,      // ι: 特别物价指数 (由外部市场干预)
-
+    pub n: f64,
     #[serde(default)]
-    pub is_preview: bool,       // 是否为预览模式 (预览模式不产生持久化流水记录)
-
-    #[serde(default)]
-    pub manual_env_index: Option<f64>, // 管理员手动覆盖环境指数
+    pub iota: f64,
 }
 
-/// 交易响应
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct TradeResponse {
-    pub total_price: f64,       // 本次交易计算后的总金额 (积分结果)
-    pub unit_price_avg: f64,    // 平均单价
-    pub env_index: f64,         // 计算时实际生效的环境指数 ε
-    pub effective_n: f64,       // 计算时该物品在该玩家名下的有效偏移量 n_eff
+web_model!(MarketItemStatus);
+pub struct MarketItemStatus {
+    pub price: f64,
+    pub buy_price: f64,
+    pub neff: f64,
+    pub base_price: f64,
 }
 
-/// 批量交易包装
-#[derive(Deserialize, Debug, Clone)]
-pub struct BatchTradeRequest {
-    pub requests: Vec<TradeRequest>,
+impl MarketItemStatus {
+    pub fn new(price: f64, buy_price: f64, neff: f64, base_price: f64) -> Self {
+        Self {
+            price: price.round_2(),
+            buy_price: buy_price.round_2(),
+            neff: neff.round_2(),
+            base_price,
+        }
+    }
 }
 
-#[derive(Serialize, Debug, Clone)]
-pub struct BatchTradeResponse {
-    pub results: Vec<TradeResponse>,
-}
+// =========================================================================
+// 5. 交易历史 (High Performance Collections)
+// =========================================================================
 
-// --- 3. 玩家持久化状态模型 ---
-
-/// 玩家销售历史聚合
-/// 用于在重启后恢复各玩家对各物品的 $n_{eff}$ 影响
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-#[serde(rename_all = "camelCase")]
+serializable!(PlayerSalesHistory);
+#[derive(Default)]
 pub struct PlayerSalesHistory {
     pub player_id: String,
     pub player_name: String,
-    /// 物品 ID 映射 历史成交片段
-    pub item_sales: HashMap<String, Vec<SalesRecord>>,
+    // 使用 FxHashMap 提升 UUID/ID 类型的哈希查询效率
+    pub item_sales: FxHashMap<String, Vec<SalesRecord>>,
 }
 
-/// 单次成交片段记录
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SalesRecord {
-    pub timestamp: i64,         // 发生时间 (ms)
-    /// 数量：正数代表卖出（压低价格），负数代表买入（推高价格，抵消之前的卖出）
-    pub amount: f64,            
-    pub env_index: f64,         // 记录成交时的环境指数
-}
-
-// --- 4. 统计与审计模型 ---
-
-/// 存入二进制流水文件 (history.bin) 的结构
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
+serializable!(TransactionRecord);
 pub struct TransactionRecord {
     pub timestamp: i64,
     pub amount: f64,
     pub total_price: f64,
     pub avg_price: f64,
     pub env_index: f64,
-    pub action: String,         // "BUY" 或 "SELL"
+    pub action: String,
     pub player_id: String,
     pub player_name: String,
     pub item_id: String,
-    pub note: String,           // 包含 Online/Offline 状态及节日备注
+    pub note: Cow<'static, str>,
 }
 
-// --- 5. 外部 API 交互模型 ---
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct HolidayApiResponse {
-    #[serde(default)]
-    pub days: Vec<HolidayItem>,
+impl TransactionRecord {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        timestamp: i64, amount: f64, total_price: f64, avg_price: f64,
+        env_index: f64, action: String, player_id: String, 
+        player_name: String, item_id: String,
+    ) -> Self {
+        Self {
+            timestamp, amount, total_price, avg_price,
+            env_index, action, player_id, player_name, item_id,
+            note: "".into(),
+        }
+    }
 }
 
-#[derive(Deserialize, Debug, Clone)]
-pub struct HolidayItem {
-    pub date: String,            // "YYYY-MM-DD"
-    #[serde(rename = "isOffDay")]
-    pub is_off_day: bool,
+// =========================================================================
+// 6. 辅助特征 (Traits)
+// =========================================================================
+
+pub trait Roundable {
+    fn round_2(self) -> f64;
 }
 
-/// 市场快照信息 (用于前端 Market 列表展示)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MarketItem {
-    pub id: String,
-    pub name: String,
-    pub base_price: f64,
-    pub lambda: f64,
-    pub n: f64,                  // 当前全服或默认偏移量 (预览用)
+impl Roundable for f64 {
+    #[inline(always)]
+    fn round_2(self) -> f64 {
+        (self * 100.0).round() / 100.0
+    }
 }
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SyncMarketRequest {
-    pub items: Vec<MarketItem>,
-}
-
-// --- 辅助默认值函数 ---
-
-fn default_port() -> u16 { 9981 }
-fn default_version() -> u32 { 1 }

@@ -3,269 +3,369 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Economy Core | 生产级经济监控</title>
+    <title>Economy Core | 工业级数值控制台</title>
     
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
 
     <style>
         [v-cloak] { display: none !important; }
         body { 
-            background-color: #f8fafc; 
-            color: #334155; 
             font-family: 'Inter', system-ui, -apple-system, sans-serif; 
+            background-color: #f8fafc; color: #334155;
+            -webkit-font-smoothing: antialiased;
         }
+
+        /* --- 动态背景动画 --- */
+        .ambient-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+        .ambient-blob { position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.4; will-change: transform; }
+        .blob-1 { width: 50vw; height: 50vw; background: #e0e7ff; animation: float1 25s infinite alternate; }
+        .blob-2 { width: 60vw; height: 60vw; background: #f0fdf4; animation: float2 30s infinite alternate; right: -10%; bottom: -10%; }
+        @keyframes float1 { from { transform: translate(-10%, -10%) scale(1); } to { transform: translate(10%, 5%) scale(1.1); } }
+        @keyframes float2 { from { transform: translate(10%, 10%) scale(1); } to { transform: translate(-5%, -5%) scale(1.05); } }
 
         .bg-grid {
-            background-size: 40px 40px;
-            background-image: linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px),
-                              linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
-            mask-image: radial-gradient(circle at center, black 40%, transparent 100%);
+            position: fixed; inset: 0; z-index: 1; pointer-events: none;
+            background-image: radial-gradient(circle, #cbd5e1 1px, transparent 1px);
+            background-size: 30px 30px; opacity: 0.15;
         }
 
+        /* --- 玻璃拟态卡片 --- */
         .glass-card {
-            background: rgba(255, 255, 255, 0.7);
-            backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.75); 
+            backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        .input-modern {
-            width: 100%;
-            background-color: #ffffff;
-            border: 1px solid #cbd5e1;
-            border-radius: 0.5rem;
-            padding: 0.6rem 0.8rem;
-            font-size: 0.875rem;
-            outline: none;
-            transition: all 0.2s;
-        }
-        .input-modern:focus {
-            border-color: #6366f1;
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-        }
-
-        .pulse-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-        .pulse-dot.online { background-color: #10b981; animation: pulse-green 2s infinite; }
-        .pulse-dot.offline { background-color: #ef4444; }
-
-        @keyframes pulse-green {
-            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-            70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
-            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        /* --- 【修正2】悬浮提示系统 (Tooltip) Z轴最高 --- */
+        .info-trigger { cursor: help; border-bottom: 1px dashed #cbd5e1; display: inline-flex; align-items: center; gap: 4px; position: relative; transition: border-color 0.2s; }
+        .info-trigger:hover { border-bottom-color: #6366f1; }
+        
+        .tooltip-box {
+            visibility: hidden; position: absolute; 
+            z-index: 9999; /* 【重要修正】层级设为最高 */
+            width: 280px;
+            background: rgba(30, 41, 59, 0.98); backdrop-filter: blur(4px); color: #f8fafc; padding: 14px; border-radius: 12px;
+            font-size: 12px; line-height: 1.6; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+            opacity: 0; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); bottom: 130%; left: 50%; 
+            transform: translateX(-50%) translateY(8px); pointer-events: none;
         }
 
-        .sidebar-item.active { background: rgba(99, 102, 241, 0.05); border-color: rgba(99, 102, 241, 0.2); }
-        .font-mono-number { font-feature-settings: "tnum"; font-variant-numeric: tabular-nums; }
-        .toast-enter-active, .toast-leave-active { transition: all 0.3s ease; }
-        .toast-enter-from, .toast-leave-to { opacity: 0; transform: translateX(30px); }
+        .tooltip-box.tooltip-right { left: auto; right: 0; transform: translateY(8px); }
+        .tooltip-box.tooltip-left { left: 0; transform: translateY(8px); }
+        .tooltip-box::after { content: ''; position: absolute; top: 100%; left: 50%; margin-left: -6px; border-width: 6px; border-style: solid; border-color: rgba(30, 41, 59, 0.98) transparent transparent transparent; }
+        .tooltip-box.tooltip-right::after { left: auto; right: 20px; }
+        .tooltip-box.tooltip-left::after { left: 20px; }
+
+        .info-trigger:hover .tooltip-box { visibility: visible; opacity: 1; transform: translateX(-50%) translateY(0); }
+        .info-trigger:hover .tooltip-box.tooltip-right { transform: translateY(0); }
+        .info-trigger:hover .tooltip-box.tooltip-left { transform: translateY(0); }
+        .tooltip-box b { color: #818cf8; display: block; margin-bottom: 4px; font-size: 13px; font-weight: 800; }
+        .tooltip-box .formula { font-family: 'Courier New', monospace; background: rgba(255,255,255,0.1); padding: 2px 4px; border-radius: 4px; color: #fbbf24; }
+
+/* --- 【修正1】极致滑块样式 (Custom Range Slider) --- */
+.modern-slider {
+    /* 核心兼容性修复：定义标准属性及其前缀 */
+    -webkit-appearance: none; /* Chrome, Safari, Edge */
+    -moz-appearance: none;    /* Firefox */
+    appearance: none;         /* 标准属性：修复 IDE 警告 */
+    
+    width: 100%;
+    height: 6px;
+    background: #e2e8f0;
+    border-radius: 10px;
+    outline: none;
+    transition: all 0.3s;
+    cursor: pointer;
+}
+
+/* 轨道 Hover 变色 */
+.modern-slider:hover { 
+    background: #c7d2fe; /* Indigo-200 */ 
+}
+
+/* 滑块按钮基础样式 (Chrome/Safari/Edge) */
+.modern-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px; 
+    background: #6366f1; /* Indigo-500 */
+    border: 3px solid #fff;
+    border-radius: 50%;
+    cursor: grab; 
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    transition: all 0.2s ease-out;
+}
+
+/* 滑块按钮基础样式 (Firefox) */
+.modern-slider::-moz-range-thumb {
+    width: 16px; /* Firefox 边框计算略有不同 */
+    height: 16px;
+    background: #6366f1;
+    border: 3px solid #fff;
+    border-radius: 50%;
+    cursor: grab;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    transition: all 0.2s ease-out;
+    border: none; /* 清除 Firefox 默认边框 */
+}
+
+/* 滑块按钮 Hover 状态 - 靛蓝发光效果 */
+.modern-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+    background: #4f46e5; /* Indigo-600 */
+    box-shadow: 0 0 0 8px rgba(99, 102, 241, 0.25); /* 柔和靛蓝光环，无黑色 */
+}
+
+/* 滑块按钮 Active (拖动中) 状态 */
+.modern-slider:active::-webkit-slider-thumb {
+    transform: scale(1.3);
+    cursor: grabbing;
+    background: #4338ca; /* Indigo-700 */
+    box-shadow: 0 0 0 12px rgba(99, 102, 241, 0.35); /* 更大的光环 */
+}
+
+        .sidebar-item.active { background: #ffffff; box-shadow: 0 4px 12px -2px rgba(99, 102, 241, 0.12); border-right: 3px solid #6366f1; }
+        .neff-bar { height: 3px; background: #e2e8f0; border-radius: 2px; overflow: hidden; margin-top: 8px; }
+        .neff-fill { height: 100%; background: #6366f1; transition: width 0.5s ease; }
+        .skeleton { background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size: 200% 100%; animation: shimmer 2s infinite; }
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
     </style>
 </head>
-<body class="h-screen overflow-hidden antialiased">
+<body>
 
-    <div class="fixed inset-0 z-0 pointer-events-none bg-grid"></div>
+    <div class="ambient-bg">
+        <div class="ambient-blob blob-1"></div>
+        <div class="ambient-blob blob-2"></div>
+    </div>
+    <div class="bg-grid"></div>
 
-    <div id="app" class="relative z-10 flex w-full h-full" v-cloak>
+    <div id="app" class="relative z-10 flex w-full h-screen overflow-hidden" v-cloak>
         
-        <aside class="w-80 bg-white/90 backdrop-blur-md border-r border-slate-200 flex flex-col z-20 shadow-sm">
-            <div class="p-6 border-b border-slate-100">
-                <div class="flex items-center gap-3 mb-5">
-                    <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
-                        <i data-lucide="bar-chart-3" class="text-white w-5 h-5"></i>
+        <aside class="w-80 bg-slate-50/50 backdrop-blur-xl border-r border-slate-200 flex flex-col z-20">
+            <div class="p-6 border-b border-slate-200 bg-white/40">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg text-white">
+                        <i data-lucide="terminal" class="w-5 h-5"></i>
                     </div>
                     <div>
-                        <h1 class="font-bold text-lg text-slate-800">Economy Core</h1>
-                        <div class="flex items-center gap-2 mt-0.5">
-                            <span class="pulse-dot" :class="serverStatus ? 'online' : 'offline'"></span>
-                            <span class="text-[10px] font-medium uppercase" :class="serverStatus ? 'text-emerald-600' : 'text-red-600'">
-                                {{ serverStatus ? '系统在线' : '连接断开' }}
-                            </span>
-                        </div>
+                        <h1 class="font-black text-slate-900 text-lg leading-none tracking-tight">Economy Core</h1>
+                        <span class="text-[10px] font-mono text-slate-400 uppercase tracking-widest">Version 5.3</span>
                     </div>
                 </div>
-                
-                <div class="relative group">
-                    <i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-slate-400"></i>
-                    <input v-model="searchQuery" placeholder="搜索物品 ID / 名称..." class="input-modern pl-10 h-10 text-sm">
+                <div class="relative">
+                    <i data-lucide="search" class="absolute left-3 top-3 w-4 h-4 text-slate-400"></i>
+                    <input v-model="searchQuery" placeholder="快速定位商品指纹..." 
+                           class="w-full bg-white border border-slate-200 rounded-lg pl-10 pr-4 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all">
                 </div>
             </div>
 
-            <div class="flex-1 overflow-y-auto p-3 space-y-1">
+            <div class="flex-1 overflow-y-auto p-4 space-y-2">
+                <div v-if="loading" class="space-y-3">
+                    <div v-for="i in 5" class="h-16 skeleton rounded-lg"></div>
+                </div>
                 <div v-for="item in filteredItems" :key="item.id" 
                      @click="selectItem(item)"
-                     class="sidebar-item group p-3 rounded-xl cursor-pointer border border-slate-100 hover:bg-white transition-all"
-                     :class="{'active border-indigo-100 bg-indigo-50/50': activeItem.id === item.id}">
-                    <div class="flex justify-between items-center mb-1">
-                        <span class="font-semibold text-sm text-slate-700">{{ item.name }}</span>
-                        <span class="text-[10px] font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-500">{{ item.id }}</span>
+                     class="sidebar-item group p-4 rounded-xl cursor-pointer transition-all hover:bg-white/60"
+                     :class="{'active': activeItem.id === item.id}">
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="font-bold text-sm text-slate-700 group-hover:text-indigo-600">{{ item.name }}</span>
+                        <span class="text-[9px] font-mono bg-slate-200 px-1.5 py-0.5 rounded text-slate-500 uppercase">{{ item.id.split(':')[1] || 'item' }}</span>
                     </div>
-                    <div class="flex justify-between items-center text-[10px] font-mono-number text-slate-500">
-                        <span><i data-lucide="layers" class="w-3 h-3 inline"></i> {{ Math.round(item.n) }}</span>
-                        <span class="text-amber-600"><i data-lucide="coins" class="w-3 h-3 inline"></i> {{ item.basePrice }}</span>
+                    <div class="flex justify-between items-center text-[10px]">
+                        <span class="text-slate-400 font-medium">Neff: {{ Math.round(item.n) }}</span>
+                        <span class="text-indigo-600 font-bold tracking-tighter">P₀: {{ item.basePrice.toFixed(1) }}</span>
+                    </div>
+                    <div class="neff-bar">
+                        <div class="neff-fill" :style="{ width: Math.min(100, (item.n / 1000) * 100) + '%', backgroundColor: getNeffColor(item.n) }"></div>
                     </div>
                 </div>
             </div>
 
-            <div class="p-4 bg-slate-50 border-t border-slate-200">
-                <div class="grid grid-cols-2 gap-2 text-[10px] font-mono-number text-slate-500">
-                    <div class="bg-white p-2 rounded-lg border border-slate-200 flex flex-col items-center">
-                        <span class="text-slate-400">系统总交易</span>
-                        <span class="text-indigo-600 font-bold">{{ metrics.totalTrades }}</span>
-                    </div>
-                    <div class="bg-white p-2 rounded-lg border border-slate-200 flex flex-col items-center">
-                        <span class="text-slate-400">活跃玩家</span>
-                        <span class="text-rose-600 font-bold">{{ metrics.activePlayers }}</span>
-                    </div>
+            <div class="p-4 bg-white/40 border-t border-slate-200">
+                <div class="flex items-center justify-between text-[10px] font-black text-slate-400 tracking-tighter uppercase">
+                    <span>Server Status</span>
+                    <span :class="serverStatus ? 'text-emerald-500' : 'text-red-500'">● {{ serverStatus ? 'Online' : 'Offline' }}</span>
                 </div>
             </div>
         </aside>
 
-        <main class="flex-1 flex flex-col relative bg-slate-50/50">
-            <header class="h-16 border-b border-slate-200 bg-white/80 backdrop-blur-xl flex justify-between items-center px-8 z-10 shadow-sm">
-                <div class="flex gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
-                    <button @click="currentTab = 'simulation'" class="px-4 py-1.5 rounded-lg text-sm font-medium" :class="currentTab === 'simulation' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'">核心分析</button>
-                    <button @click="currentTab = 'config'" class="px-4 py-1.5 rounded-lg text-sm font-medium" :class="currentTab === 'config' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'">生产配置</button>
-                </div>
+        <main class="flex-1 flex flex-col overflow-hidden">
+            <header class="h-16 border-b border-slate-200 bg-white/80 backdrop-blur-md flex justify-between items-center px-8 shrink-0 z-30">
+                <nav class="flex gap-1 p-1 bg-slate-100 rounded-xl">
+                    <button @click="currentTab = 'simulation'" 
+                            class="px-5 py-1.5 rounded-lg text-[10px] font-black transition-all uppercase tracking-wider"
+                            :class="currentTab === 'simulation' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-900'">
+                        行情模拟预测
+                    </button>
+                    <button @click="currentTab = 'config'" 
+                            class="px-5 py-1.5 rounded-lg text-[10px] font-black transition-all uppercase tracking-wider"
+                            :class="currentTab === 'config' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-900'">
+                        全局经济策略
+                    </button>
+                </nav>
 
-                <div class="flex items-center gap-6">
-                    <div class="flex flex-col items-end mr-4">
-                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">验证模式</span>
-                        <div class="flex items-center gap-2 mt-1">
-                            <span v-if="config" :class="config.isOnlineMode ? 'text-indigo-600 bg-indigo-50' : 'text-slate-500 bg-slate-100'" 
-                                  class="text-[10px] font-bold px-2.5 py-1 rounded-lg border border-current opacity-80">
-                                <i :data-lucide="config.isOnlineMode ? 'shield-check' : 'shield-alert'" class="w-3 h-3 inline mr-1"></i>
-                                {{ config.isOnlineMode ? 'MOJANG AUTH' : 'OFFLINE MODE' }}
-                            </span>
-                        </div>
-                    </div>
+                <div class="flex items-center gap-8">
                     <div class="text-right">
-                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">模拟 UUID/玩家名</p>
-                        <input v-model="playerId" class="text-xs font-mono border-none bg-transparent text-right text-indigo-600 focus:ring-0 p-0 w-32" placeholder="Player ID">
-                    </div>
-                    <div class="w-px h-8 bg-slate-200"></div>
-                    <div class="flex flex-col items-end">
-                        <span class="text-[10px] font-bold text-slate-400 uppercase">环境指数 ε</span>
-                        <span class="text-2xl font-mono-number font-bold text-amber-600 tracking-tight">{{ currentEnv.toFixed(4) }}</span>
+                        <div class="info-trigger text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">
+                            Live Environment Factor ε
+                            <div class="tooltip-box tooltip-right">
+                                <b>当前环境因子 (ε)</b>
+                                这是一个全局实时变量，由后端基于节假日、季节周期及随机波动算法生成。
+                                <br>• ε > 1.0: 市场溢价 (通胀)
+                                <br>• ε < 1.0: 市场折价 (紧缩)
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 justify-end">
+                            <span class="text-2xl font-mono font-black text-slate-900 tracking-tighter">{{ currentEnv.toFixed(4) }}</span>
+                            <div class="px-2 py-0.5 rounded-full bg-indigo-600 text-white text-[9px] font-black uppercase">{{ envNote }}</div>
+                        </div>
                     </div>
                 </div>
             </header>
 
-            <div class="flex-1 overflow-hidden relative p-6">
-                <div v-show="currentTab === 'simulation'" class="absolute inset-0 p-6 flex gap-6">
-                    <div class="w-96 flex flex-col gap-6">
-                        <div class="glass-card rounded-2xl p-6">
-                            <div class="flex justify-between items-start mb-4">
-                                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest">目标状态</h3>
-                                <span class="text-[9px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold">LIVE</span>
-                            </div>
-                            <div v-if="activeItem.id">
-                                <div class="text-xl font-bold text-slate-800 mb-4">{{ activeItem.name }}</div>
-                                <div class="space-y-4">
-                                    <div class="grid grid-cols-2 gap-3">
-                                        <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
-                                            <div class="text-[10px] text-slate-400 uppercase font-bold mb-1">即时成交价</div>
-                                            <div class="text-lg font-mono-number font-bold text-indigo-600">{{ currentPrice.toFixed(2) }}</div>
+            <div class="flex-1 relative overflow-hidden bg-slate-50/30 p-8">
+                
+                <div v-show="currentTab === 'simulation'" class="absolute inset-0 p-8 flex gap-8">
+                    <div class="w-80 flex flex-col gap-6">
+                        <div class="glass-card rounded-3xl p-6 shadow-sm">
+                            <h3 class="text-[10px] font-black text-indigo-400 uppercase mb-5 flex items-center gap-2">
+                                <i data-lucide="database" class="w-3 h-3"></i> 物资即时快照
+                            </h3>
+                            <div v-if="activeItem.id" class="space-y-5">
+                                <div>
+                                    <div class="text-2xl font-black text-slate-900 tracking-tight">{{ activeItem.name }}</div>
+                                    <div class="text-[9px] text-slate-400 font-mono uppercase bg-slate-100 px-2 py-1 rounded inline-block mt-2 tracking-tighter">{{ activeItem.id }}</div>
+                                </div>
+                                <div class="grid gap-3">
+                                    <div class="bg-indigo-600 rounded-2xl p-4 text-white shadow-xl shadow-indigo-100">
+                                        <div class="info-trigger text-[9px] font-black opacity-80 mb-1 uppercase tracking-widest flex justify-between w-full" style="border-bottom-color: rgba(255,255,255,0.3)">
+                                            结算价 (SELL)
+                                            <div class="tooltip-box">
+                                                <b>最终收购定价</b>
+                                                这是系统从玩家手中回收物资的价格。<br>
+                                                <span class="formula">P_sell = ε · P_base · e^(-λ · Neff)</span>
+                                            </div>
                                         </div>
-                                        <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
-                                            <div class="text-[10px] text-slate-400 uppercase font-bold mb-1">有效权重 n_eff</div>
-                                            <div class="text-lg font-mono-number font-bold text-slate-800">{{ simN.toFixed(2) }}</div>
+                                        <div class="text-2xl font-mono font-black">{{ currentPrice.toFixed(2) }} <span class="text-xs opacity-60 ml-1">⛁</span></div>
+                                    </div>
+                                    <div class="bg-white border border-slate-200 rounded-2xl p-4 flex justify-between items-center shadow-sm">
+                                        <div>
+                                            <div class="info-trigger text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                                                买入价 (BUY)
+                                                <div class="tooltip-box tooltip-left">
+                                                    <b>申购报价</b>
+                                                    系统售出给玩家的价格，包含风险溢价。<br>
+                                                    <span class="formula">Buy = Sell · Spread</span>
+                                                </div>
+                                            </div>
+                                            <div class="text-lg font-mono font-black text-slate-800 tracking-tighter">{{ buyPrice.toFixed(2) }}</div>
+                                        </div>
+                                        <div class="text-right">
+                                            <div class="text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">有效库存</div>
+                                            <div class="text-lg font-mono font-black text-indigo-600 tracking-tighter">{{ simN.toFixed(1) }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div v-else class="py-16 flex flex-col items-center justify-center text-slate-300 text-[10px] font-bold uppercase tracking-widest border-2 border-dashed border-slate-200 rounded-3xl">
+                                <i data-lucide="mouse-pointer-2" class="w-8 h-8 mb-4 opacity-20"></i>
+                                Select Item to Load
+                            </div>
+                        </div>
+
+                        <div class="glass-card rounded-3xl p-6 flex-1 flex flex-col shadow-sm">
+                            <h3 class="text-[10px] font-black text-slate-400 uppercase mb-8 flex items-center gap-2 tracking-[0.2em]">
+                                <i data-lucide="zap" class="w-3 h-3"></i> 交易规模模拟 (ΔN)
+                            </h3>
+                            <div class="space-y-8">
+                                <div class="space-y-4">
+                                    <div class="flex justify-between items-end">
+                                        <label class="info-trigger text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                                            冲击幅度
+                                            <div class="tooltip-box">
+                                                <b>Delta N (Δn)</b>
+                                                模拟在当前库存基础上，增加或减少一定数量的物资对市场定价造成的冲击波。
+                                            </div>
+                                        </label>
+                                        <div class="text-xs font-mono font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                                            {{ tradeAmount }} <span class="text-[9px] opacity-60">UNITS</span>
                                         </div>
                                     </div>
                                     
-                                    <div class="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
-                                        <label class="text-[10px] text-indigo-500 font-bold uppercase block mb-2">特别调整项 (ι)</label>
-                                        <input type="number" v-model.number="iota" step="10" class="input-modern h-9 font-mono text-xs" placeholder="物价偏移量">
-                                        <p class="text-[9px] text-indigo-400 mt-2">用于模拟全服库存短缺或过剩。</p>
+                                    <div class="relative pt-2">
+                                        <input type="range" v-model.number="tradeAmount" min="1" max="2304" step="64" 
+                                               class="modern-slider">
+                                        <div class="flex justify-between mt-4 text-[9px] font-bold text-slate-300 uppercase tracking-tighter">
+                                            <span>MIN (1)</span>
+                                            <span>STACK (64)</span>
+                                            <span>MAX (2.3k)</span>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                            <div v-else class="py-10 text-center text-slate-300 text-xs border border-dashed border-slate-200 rounded-xl">
-                                选择左侧物品开启监控
-                            </div>
-                        </div>
 
-                        <div class="glass-card rounded-2xl p-6 flex-1 flex flex-col">
-                            <h3 class="text-xs font-bold text-slate-400 uppercase mb-6 flex items-center gap-2">
-                                <i data-lucide="flask-conical" class="w-4 h-4 text-rose-500"></i> 交易压力测试
-                            </h3>
-                            <div class="space-y-6 flex-1">
-                                <div>
-                                    <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">测试交易量 (Δn)</label>
-                                    <div class="flex gap-2 mt-1">
-                                        <input type="number" v-model.number="tradeAmount" class="input-modern font-mono-number text-indigo-600 flex-1">
-                                        <button @click="tradeAmount = 64" class="px-3 bg-slate-100 text-slate-500 text-xs rounded-lg hover:bg-slate-200">64</button>
-                                    </div>
-                                </div>
                                 <div class="grid grid-cols-2 gap-3">
-                                    <button @click="simulateTrade('buy')" :disabled="!activeItem.id" class="py-3 bg-rose-500 text-white rounded-xl text-xs font-bold shadow-lg hover:bg-rose-600 active:scale-95 disabled:opacity-50 transition-all">
-                                        买入 (BUY)
-                                    </button>
-                                    <button @click="simulateTrade('sell')" :disabled="!activeItem.id" class="py-3 bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-lg hover:bg-emerald-600 active:scale-95 disabled:opacity-50 transition-all">
-                                        卖出 (SELL)
-                                    </button>
+                                    <button @click="simulateTrade('buy')" :disabled="!activeItem.id" 
+                                            class="py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 disabled:opacity-20 hover:scale-[1.02] active:scale-95 transition-all shadow-lg">模拟申购</button>
+                                    <button @click="simulateTrade('sell')" :disabled="!activeItem.id" 
+                                            class="py-3 bg-white text-slate-900 border-2 border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 disabled:opacity-20 hover:scale-[1.02] active:scale-95 transition-all">模拟抛售</button>
                                 </div>
-                            </div>
 
-                            <div v-if="simResult" class="mt-8 p-5 bg-slate-900 text-white rounded-2xl shadow-2xl relative overflow-hidden">
-                                <div class="absolute top-0 right-0 p-2 opacity-10"><i data-lucide="receipt" class="w-12 h-12"></i></div>
-                                <div class="flex justify-between items-center mb-2">
-                                    <span class="text-[10px] text-slate-400 font-bold uppercase">模拟成交总额</span>
-                                    <span class="text-2xl font-mono-number font-bold text-emerald-400">{{ simResult.totalPrice.toFixed(2) }}</span>
-                                </div>
-                                <div class="h-px bg-white/10 my-3"></div>
-                                <div class="flex justify-between items-center text-[10px]">
-                                    <span class="text-slate-400">平均单价</span>
-                                    <span class="font-mono text-slate-200">{{ simResult.unitPriceAvg.toFixed(4) }}</span>
+                                <div v-if="simResult" class="mt-auto p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex justify-between items-center animate-pulse">
+                                    <span class="text-[10px] font-black text-emerald-700 uppercase tracking-widest">预估成交总额</span>
+                                    <span class="text-xl font-mono font-black text-emerald-600 tracking-tighter">{{ simResult.totalPrice.toFixed(2) }}</span>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <div class="flex-1 glass-card rounded-2xl p-6 flex flex-col border border-slate-200">
-                        <div class="flex justify-between items-center mb-4">
-                            <h3 class="text-sm font-bold flex items-center gap-2 text-slate-700">
-                                <i data-lucide="line-chart" class="w-5 h-5 text-indigo-500"></i> AMM 指数衰减模型
+                    <div class="flex-1 glass-card rounded-3xl p-8 flex flex-col relative overflow-hidden">
+                        <div class="flex justify-between items-center mb-6">
+                            <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                                <i data-lucide="trending-down" class="w-3 h-3"></i> 指数衰减定价曲线
                             </h3>
-                            <button @click="fetchMarket" class="text-xs text-indigo-600 font-bold hover:underline">刷新市场快照</button>
+                            <div v-if="activeItem.id" class="info-trigger text-[10px] px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg font-mono font-bold">
+                                λ = {{ activeItem.lambda }}
+                                <div class="tooltip-box tooltip-right">
+                                    <b>价格敏感度 (Decay Lambda)</b>
+                                    该系数控制价格随库存增加而下跌的“陡峭度”。<br>
+                                    λ 越大，价格崩盘速度越快。
+                                </div>
+                            </div>
                         </div>
-                        <div id="priceChart" class="flex-1 bg-white rounded-xl border border-slate-100 p-2"></div>
+                        <div id="priceChart" class="flex-1 w-full h-full min-h-[400px]"></div>
                     </div>
                 </div>
 
-                <div v-show="currentTab === 'config'" class="absolute inset-0 p-8 overflow-y-auto">
-                    <div class="max-w-4xl mx-auto space-y-8">
-                        <div class="flex justify-between items-center">
+                <div v-show="currentTab === 'config'" class="absolute inset-0 p-12 overflow-y-auto">
+                    <div class="max-w-4xl mx-auto space-y-12">
+                        <div class="flex justify-between items-end border-b border-slate-200 pb-10">
                             <div>
-                                <h2 class="text-3xl font-bold text-slate-800">系统全局参数</h2>
-                                <p class="text-slate-500 text-sm mt-1">控制时间恢复速率与市场基础环境</p>
+                                <h2 class="text-4xl font-black text-slate-900 tracking-tight italic">Global Macro Policy</h2>
+                                <p class="text-slate-500 text-sm mt-3 font-medium">调整 Rust 计算核心的全局定价权重、衰减恢复率以及市场准入因子。</p>
                             </div>
-                            <button @click="saveConfig" class="px-8 py-3 bg-slate-900 text-white rounded-2xl font-bold shadow-xl hover:bg-slate-800 transition-all active:scale-95">同步至服务端</button>
+                            <button @click="saveConfig" class="px-8 py-3.5 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-2xl shadow-indigo-200 hover:scale-110 active:scale-95 transition-all">
+                                覆盖远程核心数据
+                            </button>
                         </div>
-                        <div v-if="config" class="grid grid-cols-2 gap-8">
-                            <div class="glass-card p-8 rounded-2xl space-y-6">
-                                <h4 class="text-xs font-bold text-indigo-600 uppercase">时间恢复 (Recovery)</h4>
-                                <div>
-                                    <label class="text-[10px] font-bold text-slate-400 uppercase">恢复率 (δ)</label>
-                                    <input v-model.number="config.recoveryDelta" step="0.01" class="input-modern mt-1">
-                                </div>
-                                <div>
-                                    <label class="text-[10px] font-bold text-slate-400 uppercase">时间常数 (τ - 秒)</label>
-                                    <input v-model.number="config.recoveryTau" class="input-modern mt-1">
-                                </div>
-                            </div>
-                            <div class="glass-card p-8 rounded-2xl space-y-6">
-                                <h4 class="text-xs font-bold text-amber-600 uppercase">市场因子 (Market)</h4>
-                                <div>
-                                    <label class="text-[10px] font-bold text-slate-400 uppercase">买入溢价 (Buy Premium)</label>
-                                    <input v-model.number="config.buyPremium" step="0.05" class="input-modern mt-1">
-                                </div>
-                                <div>
-                                    <label class="text-[10px] font-bold text-slate-400 uppercase">基础环境指数</label>
-                                    <input v-model.number="config.baseEnvIndex" step="0.1" class="input-modern mt-1">
+                        
+                        <div v-if="config" class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <div v-for="(group, gIdx) in configGroups" :key="gIdx" class="glass-card p-8 rounded-[2rem] space-y-8">
+                                <h4 class="text-[10px] font-black text-indigo-500 uppercase tracking-[0.3em] mb-4 flex items-center gap-3">
+                                    <i :data-lucide="group.icon" class="w-4 h-4"></i> {{ group.title }}
+                                </h4>
+                                <div v-for="field in group.fields" :key="field.key" class="space-y-3">
+                                    <label class="info-trigger text-[10px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                                        {{ field.label }}
+                                        <div class="tooltip-box"><b>{{ field.label }}</b>{{ field.desc }}</div>
+                                    </label>
+                                    <input v-model.number="config[field.key]" :step="field.step || 1" 
+                                           class="w-full bg-slate-100 border-none rounded-2xl px-5 py-4 font-mono font-black text-slate-900 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all text-lg">
                                 </div>
                             </div>
                         </div>
@@ -273,45 +373,63 @@
                 </div>
             </div>
         </main>
-
-        <div class="fixed top-6 right-6 z-50 flex flex-col gap-3">
+        
+        <div class="fixed bottom-8 right-8 z-50 flex flex-col gap-3 pointer-events-none">
             <transition-group name="toast">
-                <div v-for="toast in toasts" :key="toast.id" class="bg-white/95 backdrop-blur border border-slate-200 px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-4 min-w-[320px]">
-                    <div class="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center">
-                        <i data-lucide="bell" class="w-4 h-4 text-indigo-600"></i>
-                    </div>
-                    <span class="text-sm font-semibold text-slate-700">{{ toast.message }}</span>
+                <div v-for="toast in toasts" :key="toast.id" class="pointer-events-auto bg-slate-900/90 backdrop-blur-xl text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 border border-white/10">
+                    <div class="w-2 h-2 rounded-full bg-indigo-400 shadow-[0_0_10px_rgba(129,140,248,0.8)]"></div>
+                    <span class="text-[10px] font-black uppercase tracking-widest">{{ toast.message }}</span>
                 </div>
             </transition-group>
         </div>
     </div>
 
     <script>
-        const { createApp, ref, reactive, onMounted, computed, watch } = Vue;
+        const { createApp, ref, reactive, onMounted, onUnmounted, computed, watch, nextTick, shallowRef } = Vue;
 
         createApp({
             setup() {
                 const serverStatus = ref(false);
+                const loading = ref(true);
                 const currentTab = ref('simulation');
                 const searchQuery = ref('');
-                const playerId = ref('Admin_Tester');
-                const iota = ref(0);
                 const config = ref(null);
-                const items = ref([]);
+                const items = shallowRef([]);
                 const activeItem = reactive({ id: '', name: '', basePrice: 0, n: 0, lambda: 0 });
+                
                 const simN = ref(0);
                 const currentEnv = ref(1.0);
+                const envNote = ref('Normal');
                 const currentPrice = ref(0);
+                const buyPrice = ref(0);
                 const tradeAmount = ref(64);
                 const simResult = ref(null);
                 const toasts = ref([]);
-                const metrics = reactive({ totalTrades: 0, activePlayers: 0 });
+                
                 let myChart = null;
 
+                const configGroups = [
+                    { title: "自修复协议 (Auto-Recovery)", icon: "refresh-cw", fields: [
+                        { key: "recoveryDelta", label: "修复斜率 (δ)", step: 0.01, desc: "当市场静止时，有效库存(Neff)回归零值的速度。数值越大，价格恢复基准价越快。" },
+                        { key: "recoveryTau", label: "时间频率 (τ)", step: 60, desc: "定义物理时间周期长度（秒）。默认为 3600。" }
+                    ]},
+                    { title: "宏观调控 (Macro Control)", icon: "sliders", fields: [
+                        { key: "buyPremium", label: "申购溢价乘数", step: 0.05, desc: "玩家买入价相对于卖出价的溢价倍数。用于回收多余流动性。" },
+                        { key: "baseEnvIndex", label: "基础通胀指数 (ε₀)", step: 0.1, desc: "服务器默认的原始环境乘数。" },
+                        { key: "globalIota", label: "全域库存偏移 (ι)", step: 10, desc: "人为注入的虚拟库存偏移量。正数全局降价，负数全局提价。" }
+                    ]}
+                ];
+
                 const filteredItems = computed(() => {
-                    const q = searchQuery.value.toLowerCase();
+                    const q = searchQuery.value.trim().toLowerCase();
                     return items.value.filter(i => i.name.toLowerCase().includes(q) || i.id.toLowerCase().includes(q));
                 });
+
+                const getNeffColor = (n) => {
+                    if (n > 2000) return '#ef4444';
+                    if (n > 800) return '#f59e0b';
+                    return '#6366f1';
+                };
 
                 const showToast = (message) => {
                     const id = Date.now();
@@ -319,152 +437,116 @@
                     setTimeout(() => toasts.value = toasts.value.filter(t => t.id !== id), 3000);
                 };
 
+                const calculatePrice = (env, base, lambda, n) => {
+                    const iota = config.value?.globalIota || 0;
+                    return env * base * Math.exp(-Math.abs(lambda) * (n + iota));
+                };
+
                 const selectItem = async (item) => {
                     Object.assign(activeItem, item);
-                    simN.value = item.n; 
                     simResult.value = null;
-                    await syncPreviewData();
-                };
-
-                // 从后端同步真实的有效 N 和当前环境指数
-                const syncPreviewData = async () => {
-                    if(!activeItem.id) return;
                     try {
-                        const res = await axios.post('/calculate_sell', {
-                            playerId: playerId.value,
-                            playerName: playerId.value,
-                            itemId: activeItem.id,
-                            basePrice: activeItem.basePrice,
-                            amount: 0.0001, // 极小量模拟获取当前 n_eff
-                            decayLambda: activeItem.lambda,
-                            iota: iota.value,
-                            isPreview: true
-                        });
-                        simN.value = res.data.effectiveN;
-                        currentEnv.value = res.data.envIndex;
-                        updatePrice();
+                        const res = await axios.post('/api/market/prices', { item_ids: [item.id] });
+                        const data = res.data;
+                        const live = data.items[item.id];
+                        if (live) {
+                            currentEnv.value = data.envIndex;
+                            envNote.value = data.envNote;
+                            simN.value = live.neff;
+                            currentPrice.value = live.price;
+                            buyPrice.value = live.buy_price;
+                        }
                         renderChart();
-                    } catch (e) { console.error("Sync error", e); }
-                };
-
-                const updatePrice = () => {
-                    // P = ε * P0 * e^(-λ * (n + ι))
-                    currentPrice.value = currentEnv.value * activeItem.basePrice * Math.exp(-activeItem.lambda * (simN.value + iota.value));
-                };
-
-                watch(iota, updatePrice);
-
-                const simulateTrade = async (type) => {
-                    if (!activeItem.id) return;
-                    try {
-                        const res = await axios.post(`/calculate_${type}`, {
-                            playerId: playerId.value,
-                            playerName: playerId.value,
-                            itemId: activeItem.id,
-                            basePrice: activeItem.basePrice,
-                            amount: tradeAmount.value,
-                            decayLambda: activeItem.lambda,
-                            iota: iota.value,
-                            isPreview: true
-                        });
-                        
-                        simResult.value = res.data;
-                        const startN = res.data.effectiveN;
-                        // 如果是卖出，点向右移；买入点向左移
-                        simN.value = type === 'sell' ? startN + tradeAmount.value : Math.max(0, startN - tradeAmount.value);
-                        
-                        updatePrice();
-                        renderChart(type, startN, tradeAmount.value);
-                        showToast(`模拟${type === 'sell' ? '卖出' : '买入'}成功 (预览模式)`);
-                    } catch (e) { 
-                        showToast("模拟失败：身份验证被后端拒绝"); 
+                    } catch (e) {
+                        showToast("Failed to Fetch Live Data");
+                        simN.value = item.n || 0;
+                        currentPrice.value = calculatePrice(currentEnv.value, item.basePrice, item.lambda, simN.value);
                     }
+                };
+
+                const simulateTrade = (type) => {
+                    if (!activeItem.id) return;
+                    const delta = type === 'buy' ? -tradeAmount.value : tradeAmount.value;
+                    const prevN = simN.value;
+                    const prevPrice = currentPrice.value;
+                    simN.value = Math.max(0, simN.value + delta);
+                    currentPrice.value = calculatePrice(currentEnv.value, activeItem.basePrice, activeItem.lambda, simN.value);
+                    buyPrice.value = currentPrice.value * (config.value?.buyPremium || 1.25);
+                    const unitAvg = (prevPrice + currentPrice.value) / 2;
+                    simResult.value = { type, totalPrice: unitAvg * tradeAmount.value };
+                    renderChart(type, prevN, tradeAmount.value);
+                    showToast(`SIMULATION: ${type.toUpperCase()}`);
                 };
 
                 const renderChart = (action, startN, amount) => {
-                    if (!myChart || !activeItem.id) return;
-                    const data = [];
-                    const maxN = Math.max(simN.value * 2, 2.0 / activeItem.lambda);
-                    const step = maxN / 120;
+                    if (!activeItem.id) return;
+                    const dom = document.getElementById('priceChart');
+                    if (!dom) return;
+                    if (!myChart) myChart = echarts.init(dom);
                     
-                    for(let x=0; x<=maxN; x+=step) {
-                        data.push([x, currentEnv.value * activeItem.basePrice * Math.exp(-activeItem.lambda * (x + iota.value))]);
+                    const maxN = Math.max(simN.value * 1.5, 500);
+                    const plotData = [];
+                    for(let x=0; x<=maxN; x += maxN/100) {
+                        plotData.push([x, calculatePrice(currentEnv.value, activeItem.basePrice, activeItem.lambda, x)]);
                     }
 
                     const option = {
-                        grid: { top: 40, right: 30, bottom: 40, left: 60 },
-                        tooltip: { 
-                            trigger: 'axis', 
-                            formatter: (p) => `权重 N: ${p[0].value[0].toFixed(2)}<br/>价格: ${p[0].value[1].toFixed(2)}` 
-                        },
-                        xAxis: { type: 'value', name: 'N', splitLine: { lineStyle: { color: '#f1f5f9' } } },
-                        yAxis: { type: 'value', name: 'Price', splitLine: { lineStyle: { color: '#f1f5f9' } } },
-                        series: [{
-                            name: '价格曲线',
-                            type: 'line', smooth: true, data, showSymbol: false,
-                            lineStyle: { color: '#6366f1', width: 3 },
-                            areaStyle: { color: 'rgba(99,102,241,0.05)' }
-                        }, {
-                            name: '当前价格',
-                            type: 'effectScatter', data: [[simN.value, currentPrice.value]],
-                            symbolSize: 14, itemStyle: { color: '#fbbf24', borderColor: '#fff', borderWidth: 2 }
-                        }]
+                        animationDuration: 1000,
+                        tooltip: { trigger: 'axis', backgroundColor: '#fff', borderRadius: 12 },
+                        grid: { top: 40, right: 30, bottom: 40, left: 60, containLabel: true },
+                        xAxis: { type: 'value', splitLine: { show: false }, axisLine: { lineStyle: { color: '#e2e8f0' } } },
+                        yAxis: { type: 'value', splitLine: { lineStyle: { type: 'dashed', color: '#e2e8f0' } } },
+                        series: [
+                            {
+                                type: 'line', data: plotData, smooth: true, showSymbol: false,
+                                lineStyle: { width: 4, color: '#6366f1' },
+                                areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: 'rgba(99,102,241,0.15)' }, { offset: 1, color: 'rgba(99,102,241,0)' }])}
+                            },
+                            {
+                                type: 'effectScatter', data: [[simN.value, currentPrice.value]],
+                                symbolSize: 15, itemStyle: { color: '#fbbf24', borderWidth: 3, borderColor: '#fff' }
+                            }
+                        ]
                     };
-
                     if(action) {
-                        const x0 = action === 'buy' ? Math.max(0, startN - amount) : startN;
-                        const x1 = action === 'buy' ? startN : startN + amount;
                         option.series[0].markArea = {
-                            itemStyle: { color: action === 'buy' ? 'rgba(244,63,94,0.1)' : 'rgba(16,185,129,0.1)' },
-                            data: [[{ xAxis: x0 }, { xAxis: x1 }]]
+                            itemStyle: { color: action === 'buy' ? 'rgba(244,63,94,0.08)' : 'rgba(16,185,129,0.08)' },
+                            data: [[{ xAxis: action === 'buy' ? simN.value : startN }, { xAxis: action === 'buy' ? startN : simN.value }]]
                         };
                     }
                     myChart.setOption(option, true);
                 };
 
-                const fetchMarket = async () => {
+                const fetchData = async () => {
                     try {
-                        const res = await axios.get('/api/market');
-                        items.value = res.data;
+                        const [mRes, cRes] = await Promise.all([axios.get('/api/market'), axios.get('/api/config')]);
+                        items.value = mRes.data;
+                        config.value = cRes.data;
                         serverStatus.value = true;
-                    } catch { serverStatus.value = false; }
-                };
-
-                const fetchConfig = async () => {
-                    try {
-                        const res = await axios.get('/api/config');
-                        config.value = res.data;
-                    } catch(e) {}
+                        loading.value = false;
+                    } catch (e) { serverStatus.value = false; }
                 };
 
                 const saveConfig = async () => {
                     try {
                         await axios.post('/api/config', config.value);
-                        showToast("配置已持久化");
-                    } catch { showToast("保存失败"); }
-                };
-
-                const fetchMetrics = async () => {
-                    try {
-                        const res = await axios.get('/api/metrics');
-                        metrics.totalTrades = res.data.total_trades;
-                        metrics.activePlayers = res.data.active_players;
-                    } catch(e) {}
+                        showToast("POLICY UPDATED");
+                    } catch { showToast("UPDATE FAILED"); }
                 };
 
                 onMounted(() => {
                     lucide.createIcons();
-                    myChart = echarts.init(document.getElementById('priceChart'));
-                    fetchMarket();
-                    fetchConfig();
-                    setInterval(fetchMetrics, 3000);
-                    window.addEventListener('resize', () => myChart.resize());
+                    fetchData();
+                    setInterval(fetchData, 10000);
+                    window.addEventListener('resize', () => myChart?.resize());
                 });
 
+                onUnmounted(() => { if (myChart) myChart.dispose(); });
+
                 return {
-                    serverStatus, currentTab, searchQuery, playerId, config, items, filteredItems,
-                    activeItem, simN, currentEnv, currentPrice, tradeAmount, simResult, toasts, metrics, iota,
-                    selectItem, simulateTrade, saveConfig, fetchMarket
+                    serverStatus, currentTab, searchQuery, config, items, filteredItems, loading,
+                    activeItem, simN, currentEnv, envNote, currentPrice, buyPrice, tradeAmount, simResult, toasts,
+                    selectItem, simulateTrade, saveConfig, configGroups, getNeffColor
                 };
             }
         }).mount('#app');
