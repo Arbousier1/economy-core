@@ -5,10 +5,9 @@ use rustc_hash::FxHashMap;
 use validator::Validate;
 
 // =========================================================================
-// 1. 宏定义 (Macros)
+// 1. 宏定义 (修正后的语法)
 // =========================================================================
 
-/// 自动为结构体添加常用派生属性：Debug, Clone, Serde, Bincode
 macro_rules! serializable {
     ($($item:tt)*) => {
         #[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode, Default)]
@@ -17,7 +16,6 @@ macro_rules! serializable {
     };
 }
 
-/// 专门用于 Web API 交互的模型（不包含 Bincode 编解码）
 macro_rules! web_model {
     ($($item:tt)*) => {
         #[derive(Debug, Clone, Serialize, Deserialize, Default, Validate)]
@@ -25,10 +23,6 @@ macro_rules! web_model {
         $($item)*
     };
 }
-
-// =========================================================================
-// 2. 辅助特征与函数 (Utilities)
-// =========================================================================
 
 pub trait Roundable {
     fn round_2(self) -> f64;
@@ -46,7 +40,7 @@ pub fn round_2(val: f64) -> f64 {
 }
 
 // =========================================================================
-// 3. 配置模型 (Config)
+// 2. 核心模型 (配置、市场、历史)
 // =========================================================================
 
 serializable! {
@@ -70,10 +64,6 @@ serializable! {
     }
 }
 
-// =========================================================================
-// 4. 市场模型 (Market)
-// =========================================================================
-
 serializable! {
     pub struct MarketItem {
         #[serde(alias = "key")] 
@@ -95,22 +85,27 @@ web_model! {
     }
 }
 
+impl MarketItemStatus {
+    pub fn new(price: f64, buy_price: f64, neff: f64, base_price: f64) -> Self {
+        Self { price, buy_price, neff, base_price }
+    }
+}
+
 serializable! {
     pub struct EnvCache {
         pub index: f64,
         pub last_update: i64,
+        pub timestamp: i64, 
+        pub note: String,   
     }
 }
-
-// =========================================================================
-// 5. 交易历史模型 (History)
-// =========================================================================
 
 serializable! {
     pub struct SalesRecord {
         pub timestamp: i64,
         pub price: f64,
         pub amount: f64,
+        pub env_index: f64,
     }
 }
 
@@ -137,8 +132,18 @@ serializable! {
     }
 }
 
+impl TransactionRecord {
+    pub fn new(ts: i64, amt: f64, tp: f64, ap: f64, ei: f64, act: String, pid: String, pnm: String, iid: String) -> Self {
+        Self {
+            timestamp: ts, amount: amt, total_price: tp, avg_price: ap,
+            env_index: ei, action: act, player_id: pid, player_name: pnm,
+            item_id: iid, note: "".into(),
+        }
+    }
+}
+
 // =========================================================================
-// 6. API 请求与响应模型 (Web Requests)
+// 3. API 请求/响应模型 (修复字段缺失)
 // =========================================================================
 
 web_model! {
@@ -147,6 +152,23 @@ web_model! {
         pub player_name: String,
         pub item_id: String,
         pub amount: f64,
+        pub base_price: f64,
+        pub decay_lambda: f64,
+        pub iota: Option<f64>,
+        pub manual_env_index: Option<f64>,
+        pub is_preview: bool,
+    }
+}
+
+web_model! {
+    pub struct TradeResponse {
+        pub success: bool,
+        pub message: String,
+        pub final_price: f64,
+        pub total_price: f64,
+        pub unit_price_avg: f64,
+        pub env_index: f64,
+        pub effective_n: f64,
     }
 }
 
@@ -155,6 +177,7 @@ web_model! {
         pub player_id: String,
         pub player_name: String,
         pub trades: Vec<BatchTradeItem>,
+        pub requests: Vec<BatchTradeItem>, 
     }
 }
 
@@ -167,21 +190,12 @@ web_model! {
 
 web_model! {
     pub struct BatchTradeResponse {
-        pub results: Vec<String>, // 或者更具体的 Result 结构
+        pub results: Vec<String>,
     }
 }
 
 web_model! {
     pub struct MarketPriceRequest {
         pub item_ids: Vec<String>,
-    }
-}
-
-// 对应逻辑中可能用到的 TradeResponse
-web_model! {
-    pub struct TradeResponse {
-        pub success: bool,
-        pub message: String,
-        pub final_price: f64,
     }
 }
