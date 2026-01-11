@@ -29,16 +29,15 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
 # =================================================================
-# 关键修复区 (根据 reqwest 0.13.1 文档)
+# Networking & Security (最终修复版)
 # =================================================================
-# 1. default-features = false: 尽管 0.13 默认就是 rustls，但为了稳健，我们显式控制。
-# 2. features = ["rustls"]: 启用核心 Rustls 支持 (文档中确认存在的 flag)。
-# 3. features = ["json"]: 开启 JSON 支持。
-# 4. features = ["gzip", "brotli", "deflate"]: 开启压缩支持 (根据文档，分别对应 tower-http 实现)。
-# 5. features = ["http2"]: 显式开启 HTTP2 (文档显示它在默认列表里，手动开启更保险)。
+
+# Reqwest 0.13 配置:
+# 1. 显式开启 "rustls" 和 "rustls-native-certs" 以支持 HTTPS
+# 2. 显式开启 "json", "http2" 等基础功能
 reqwest = { version = "0.13", default-features = false, features = [
     "rustls", 
-    "rustls-native-certs", # 显式添加这个以确保在 Windows/Linux 上能读到系统证书
+    "rustls-native-certs", 
     "json", 
     "http2", 
     "gzip", 
@@ -46,8 +45,10 @@ reqwest = { version = "0.13", default-features = false, features = [
     "deflate"
 ] }
 
-# 底层加密库
-aws-lc-rs = { version = "1.11", features = ["bindgen", "rustls"] }
+# AWS-LC-RS 配置:
+# 1. 仅保留 "bindgen" 以解决 GitHub Actions 环境编译问题
+# 2. 移除了不存在的 "rustls" feature
+aws-lc-rs = { version = "1.11", features = ["bindgen"] }
 
 [profile.release]
 opt-level = 3
