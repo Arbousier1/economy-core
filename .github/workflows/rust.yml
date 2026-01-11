@@ -1,4 +1,4 @@
-name: Rust Build & Artifact
+name: Rust Build & Artifact (Multi-Platform)
 
 on:
   push:
@@ -8,39 +8,75 @@ on:
 
 jobs:
   build:
-    name: Build economy-core
-    # 推荐使用 ubuntu-latest，构建速度最快且依赖处理最简单
-    runs-on: ubuntu-latest
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false # 如果一个平台失败，不要取消另一个平台的构建
+      matrix:
+        include:
+          # --- Linux 配置 ---
+          - os: ubuntu-latest
+            artifact_name: economy-core-linux
+            # Linux 下二进制文件没有后缀
+            bin_name: economy-core
+          
+          # --- Windows 配置 ---
+          - os: windows-latest
+            artifact_name: economy-core-windows.exe
+            # Windows 下必须带 .exe
+            bin_name: economy-core.exe
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 关键步骤：安装 LLVM 和 Clang 
-      # 这是为了解决 aws-lc-rs 在编译时需要的 bindgen 环境
-      - name: Install LLVM and Clang
+      # ----------------------------------------------------------------
+      # 1. 环境依赖安装 (针对不同平台)
+      # ----------------------------------------------------------------
+      
+      # Linux: 安装 Clang 和 LLVM (用于 bindgen)
+      - name: Install Dependencies (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y llvm-dev libclang-dev clang
+
+      # Windows: 安装 LLVM (用于 bindgen)
+      # aws-lc-rs 的 bindgen 特性在 Windows 上非常依赖 LIBCLANG_PATH
+      - name: Install Dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install llvm -y
+          # 将 LLVM 路径写入环境变量，确保 build.rs 能找到它
+          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+
+      # ----------------------------------------------------------------
+      # 2. Rust 工具链与构建
+      # ----------------------------------------------------------------
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
 
-      # 关键步骤：启用 Rust 编译缓存
-      # 这可以让你原本 10 分钟的构建在第二次只需 2 分钟
+      # 启用缓存，针对 OS 自动区分
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
+        with:
+          # 使用 matrix.os 作为缓存键的一部分，防止 Linux/Win 缓存混淆
+          key: ${{ matrix.os }}
 
       - name: Build release
         run: cargo build --release
 
-      # 上传构建产物
+      # ----------------------------------------------------------------
+      # 3. 上传产物
+      # ----------------------------------------------------------------
+
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: economy-core-linux
-          # 注意：如果在 Windows 上运行，路径需改为 target/release/economy-core.exe
-          path: target/release/economy-core
+          name: ${{ matrix.artifact_name }}
+          # 使用矩阵变量动态定位文件
+          path: target/release/${{ matrix.bin_name }}
           if-no-files-found: error
