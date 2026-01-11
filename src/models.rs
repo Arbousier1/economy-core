@@ -261,3 +261,11 @@ web_model! {
         pub item_ids: Vec<String>,
     }
 }
+
+// [核心新增] 对应 Java 端 syncMarketData 的请求体
+// Java 发送: { "items": [ ... ] } -> Rust 接收并更新缓存
+web_model! {
+    pub struct MarketSyncRequest {
+        pub items: Vec<MarketItem>,
+    }
+}

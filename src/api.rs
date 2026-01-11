@@ -248,11 +248,39 @@ async fn persist_transaction(state: AppState, record: TransactionRecord) {
     }
 }
 
-// [新增] 市场同步接口 (Placeholder)
-// 用于管理面板强制刷新配置或缓存
-pub async fn sync_market(State(_state): State<AppState>) -> impl IntoResponse {
+// =========================================================================
+// 6. 管理与同步接口
+// =========================================================================
+
+// [核心实现] 真正的市场同步逻辑，接收 Java 发来的配置并更新缓存
+pub async fn sync_market(
+    State(state): State<AppState>,
+    Json(payload): Json<MarketSyncRequest> // 使用 models.rs 中定义的结构体
+) -> impl IntoResponse {
+    let item_count = payload.items.len();
+    
+    // 获取写锁并覆盖缓存
+    {
+        let mut cache = state.market_cache.write();
+        *cache = payload.items;
+    }
+    
+    // 记录日志
+    tracing::info!("♻️  收到 Java 端同步请求，已更新 {} 个市场物品", item_count);
+
     Json(serde_json::json!({ 
         "success": true, 
-        "message": "Market synced successfully" 
+        "message": format!("Synced {} items", item_count) 
+    }))
+}
+
+// 简单的性能监控接口
+pub async fn get_metrics(State(state): State<AppState>) -> impl IntoResponse {
+    let uptime = chrono::Utc::now().timestamp() - state.metrics.start_time;
+    Json(serde_json::json!({
+        "totalTrades": state.metrics.total_trades.load(Ordering::Relaxed),
+        "dropped": state.metrics.channel_dropped.load(Ordering::Relaxed),
+        "uptime": uptime,
+        "cachedItems": state.market_cache.read().len()
     }))
 }
