@@ -129,10 +129,7 @@ pub async fn execute_trade_logic(
 
 pub mod pricing {
     use super::constants;
-<<<<<<< HEAD
     // [修复] 将 SalesRecord 移入此处引用，解决 unused import 警告
-=======
->>>>>>> 6a82f50 (修复后端持久化)
     use crate::models::{AppConfig, SalesRecord, Roundable};
 
     pub struct PricingEngine;
@@ -203,11 +200,8 @@ pub mod environment {
     use chrono::{Datelike, Local};
     use std::collections::HashMap;
     use parking_lot::RwLock;
-<<<<<<< HEAD
     
     // [修复] 将 rand 引入移到 mod 内部作用域，彻底解决 E0425 错误
-=======
->>>>>>> 6a82f50 (修复后端持久化)
     use rand::thread_rng; 
     use rand_distr::{Distribution, Normal};
 
@@ -256,10 +250,7 @@ pub mod environment {
             eps -= config.weekend_factor; tags.push("Weekend");
         }
 
-<<<<<<< HEAD
         // [修复] 现在这里的 thread_rng 能够正确被编译器找到了
-=======
->>>>>>> 6a82f50 (修复后端持久化)
         let mut r = thread_rng(); 
         let noise = Normal::new(0.0, config.noise_std.max(0.0001))
             .unwrap_or_else(|_| Normal::new(0.0, 1.0).unwrap())
