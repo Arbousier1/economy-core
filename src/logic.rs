@@ -1,13 +1,13 @@
 use crate::models::{
     AppConfig, TradeRequest, TradeResponse, TransactionRecord, 
-    PlayerSalesHistory, EnvCache, Roundable, round_2
+    PlayerSalesHistory, EnvCache, Roundable, round_2, SalesRecord
 };
 use std::collections::HashMap;
 use chrono::{Utc, Datelike, Local};
 use tracing::{warn, info};
 use reqwest::StatusCode;
 use parking_lot::RwLock;
-use rand::prelude::*; // 优化：使用更高性能的 Rng 访问
+use rand::prelude::*;
 
 // --- 子模块重新导出 ---
 pub use self::pricing::PricingEngine;
@@ -19,7 +19,7 @@ pub use self::environment::calculate_current_env_index;
 
 mod constants {
     pub const EPSILON_AMT: f64 = 1e-10;      // 最小交易量阈值
-    pub const LAMBDA_MIN: f64 = 1e-9;        // λ 最小值，防止积分公式除零
+    pub const LAMBDA_MIN: f64 = 1e-9;        // λ 最小值
     pub const MIN_ENV_INDEX: f64 = 0.05;     // 市场环境硬底部
     pub const MOJANG_TIMEOUT_MS: u64 = 3000; // Mojang API 快速超时
 }
@@ -28,7 +28,6 @@ mod constants {
 // 2. 交易执行上下文 (Trade Context)
 // =========================================================================
 
-/// 封装单次交易的所有外部依赖，减少函数传参开销 (Parameter Bloat)
 struct TradeContext<'a> {
     req: &'a TradeRequest,
     config: &'a AppConfig,
@@ -38,29 +37,34 @@ struct TradeContext<'a> {
 }
 
 impl<'a> TradeContext<'a> {
-    /// 执行核心交易流
     async fn execute(self, is_buy: bool, http_client: &reqwest::Client) -> (TradeResponse, Option<TransactionRecord>) {
         let now_ms = Utc::now().timestamp_millis();
 
-        // 1. 异步身份验证 (Fast-fail)
+        // 1. 验证 (对齐 models.rs 中的 success/message)
         if !validate_player(self.req, self.config.is_online_mode, http_client).await {
-            return (empty_resp(1.0, 0.0), None);
+            let mut resp = empty_resp(1.0, 0.0);
+            resp.success = false;
+            resp.message = "身份验证失败".into();
+            return (resp, None);
         }
 
-        // 2. 确定环境指数 (ε)
+        // 2. 环境指数
         let (env_idx, env_note) = self.resolve_env();
 
-        // 3. 计算个体有效库存 (N_eff)
+        // 3. 计算 N_eff
         let n_eff = self.calculate_n_eff(now_ms);
 
-        // 4. 数学定价计算 (核心积分模型)
+        // 4. 定价计算
         let total_price = PricingEngine::calculate_price(
             self.req.base_price, env_idx, n_eff, self.req.amount, 
             self.req.decay_lambda, self.config.buy_premium, is_buy
         );
 
-        // 5. 构造响应与流水记录
-        let response = build_resp(total_price, self.req.amount, env_idx, n_eff);
+        // 5. 构造响应
+        let mut response = build_resp(total_price, self.req.amount, env_idx, n_eff);
+        response.success = true;
+        response.message = format!("交易成功 ({})", env_note);
+
         let record = self.create_record(&response, env_note, is_buy, now_ms);
 
         (response, record)
@@ -68,6 +72,7 @@ impl<'a> TradeContext<'a> {
 
     fn resolve_env(&self) -> (f64, String) {
         match self.req.manual_env_index {
+            // 明确类型推导
             Some(m) if m > 0.0 && m.is_finite() => (m, "Manual".into()),
             _ => calculate_current_env_index(self.config, self.holidays, self.env_cache),
         }
@@ -96,7 +101,6 @@ pub async fn execute_trade_logic(
     player_history: &PlayerSalesHistory, is_buy: bool,
     env_cache: &RwLock<Option<EnvCache>>, http_client: &reqwest::Client,
 ) -> (TradeResponse, Option<TransactionRecord>) {
-    // 基础边界校验
     if req.amount < constants::EPSILON_AMT || !req.amount.is_finite() {
         return (empty_resp(1.0, 0.0), None);
     }
@@ -106,7 +110,7 @@ pub async fn execute_trade_logic(
 }
 
 // =========================================================================
-// 3. 定价引擎 (Numerical Stability Pricing)
+// 3. 定价引擎
 // =========================================================================
 
 pub mod pricing {
@@ -116,7 +120,6 @@ pub mod pricing {
     pub struct PricingEngine;
 
     impl PricingEngine {
-        /// 入口：自动处理买卖差异逻辑
         pub fn calculate_price(base: f64, env: f64, n: f64, amt: f64, lambda: f64, premium: f64, is_buy: bool) -> f64 {
             if is_buy {
                 Self::buy_logic(base * premium, env, n, amt, lambda)
@@ -129,7 +132,6 @@ pub mod pricing {
             let n_start = (n_eff - amt).max(0.0);
             let discount_amt = (n_eff - n_start).max(0.0);
             
-            // 混合计价：库存内部分享受衰减折扣，超出部分按溢价原价计算
             if discount_amt < amt {
                 let premium_amt = amt - discount_amt;
                 let p_discount = if discount_amt > constants::EPSILON_AMT {
@@ -141,12 +143,10 @@ pub mod pricing {
             }
         }
 
-        /// 核心积分公式优化：R = (P_max / λ) * [e^(-λ*n1) - e^(-λ*n2)]
         pub fn integral_revenue(base: f64, env: f64, n1: f64, amt: f64, lambda: f64) -> f64 {
             let p_max = base * env;
             let l = lambda.abs();
 
-            // 稳定性修正：当 λ 极小时，使用线性极限计算防止 NaN
             if l < constants::LAMBDA_MIN {
                 return (p_max * amt).round_2();
             }
@@ -171,15 +171,15 @@ pub mod pricing {
 }
 
 // =========================================================================
-// 4. 环境模拟 (Atomic Environment Simulation)
+// 4. 环境模拟
 // =========================================================================
 
 pub mod environment {
     use super::constants;
     use crate::models::{AppConfig, EnvCache};
-    use chrono::{Datelike, Local};
+    use chrono::Local;
     use rand::prelude::*;
-    use rand_distr::Normal;
+    use rand_distr::{Distribution, Normal};
     use std::collections::HashMap;
     use parking_lot::RwLock;
 
@@ -188,7 +188,6 @@ pub mod environment {
         let now = Local::now();
         let ts = now.timestamp();
 
-        // 读锁快速路径 (DCL)
         if let Some(c) = cache.read().as_ref() {
             if c.timestamp == ts { return (c.index, c.note.clone()); }
         }
@@ -199,7 +198,13 @@ pub mod environment {
         }
 
         let (idx, note) = perform_calc(now, config, holidays);
-        *wg = Some(EnvCache { index: idx, note: note.clone(), timestamp: ts });
+        // 对齐 models.rs 中的 EnvCache 字段
+        *wg = Some(EnvCache { 
+            index: idx, 
+            note: note.clone(), 
+            timestamp: ts,
+            last_update: ts 
+        });
         (idx, note)
     }
 
@@ -215,7 +220,6 @@ pub mod environment {
             tags.push("Holiday");
         }
 
-        // 季节修正逻辑
         if is_range(&md, &config.winter_start, &config.winter_end) {
             eps -= config.holiday_factor; tags.push("Winter");
         } else if is_range(&md, &config.summer_start, &config.summer_end) {
@@ -226,7 +230,6 @@ pub mod environment {
             eps -= config.weekend_factor; tags.push("Weekend");
         }
 
-        // 高性能高斯噪声生成
         let mut r = thread_rng(); 
         let noise = Normal::new(0.0, config.noise_std.max(0.0001))
             .map(|d| d.sample(&mut r)).unwrap_or(0.0);
@@ -237,17 +240,20 @@ pub mod environment {
 
     fn is_range(curr: &str, s: &str, e: &str) -> bool {
         if s <= e { curr >= s && curr <= e } 
-        else { curr >= s || curr <= e } // 跨年修正
+        else { curr >= s || curr <= e }
     }
 }
 
 // =========================================================================
-// 5. 辅助工具 (Helpers)
+// 5. 辅助工具 (修复结构体初始化)
 // =========================================================================
 
 fn build_resp(total: f64, amt: f64, env: f64, n_eff: f64) -> TradeResponse {
     let t = total.abs();
     TradeResponse {
+        success: true,
+        message: "".into(),
+        final_price: t.round_2(),
         total_price: t.round_2(),
         unit_price_avg: if amt > constants::EPSILON_AMT { (t / amt).round_2() } else { 0.0 },
         env_index: (env * 1000.0).round() / 1000.0,
@@ -258,12 +264,21 @@ fn build_resp(total: f64, amt: f64, env: f64, n_eff: f64) -> TradeResponse {
 async fn validate_player(req: &TradeRequest, online: bool, client: &reqwest::Client) -> bool {
     if !online { return req.player_id.len() >= 32; }
     let url = format!("https://sessionserver.mojang.com/session/minecraft/profile/{}", req.player_id.replace("-", ""));
+    // 明确响应闭包类型
     client.get(&url).timeout(std::time::Duration::from_millis(constants::MOJANG_TIMEOUT_MS))
-          .send().await.map(|r| r.status() == StatusCode::OK).unwrap_or(false)
+          .send().await.map(|r: reqwest::Response| r.status() == StatusCode::OK).unwrap_or(false)
 }
 
 fn empty_resp(env: f64, n: f64) -> TradeResponse {
-    TradeResponse { total_price: 0.0, unit_price_avg: 0.0, env_index: env, effective_n: n }
+    TradeResponse { 
+        success: false,
+        message: "交易无效".into(),
+        final_price: 0.0,
+        total_price: 0.0, 
+        unit_price_avg: 0.0, 
+        env_index: env, 
+        effective_n: n 
+    }
 }
 
 impl TransactionRecord {
