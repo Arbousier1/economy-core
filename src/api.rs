@@ -1,14 +1,14 @@
 use axum::{extract::{State, Json}, response::IntoResponse, http::StatusCode};
-use std::{collections::HashSet, sync::atomic::Ordering};
+use std::{collections::{HashSet, HashMap}, sync::atomic::Ordering};
 use futures::{stream, StreamExt};
 use rustc_hash::FxHashMap;
 
 use crate::AppState;
-use crate::models::{self, *}; // 确保引入了 SalesRecord, TradeRequest 等
+use crate::models::{self, *};
 use crate::logic::{execute_trade_logic, pricing::PricingEngine, environment};
 
 // =========================================================================
-// 1. 错误处理与辅助
+// 1. 错误处理与验证
 // =========================================================================
 
 #[derive(Debug, thiserror::Error)]
@@ -39,7 +39,7 @@ impl TradeRequest {
 }
 
 // =========================================================================
-// 2. 交易处理 (Trade Handlers)
+// 2. 交易核心路由 (Trade Handlers)
 // =========================================================================
 
 pub async fn handle_sell(s: State<AppState>, j: Json<TradeRequest>) -> impl IntoResponse {
@@ -58,28 +58,29 @@ async fn process_trade(
     // 1. 输入验证
     if let Err(e) = req.validate() { return e.into_response(); }
 
-    // 2. 获取快照 (最小化锁竞争)
+    // 2. 获取状态快照 (读锁，最小化竞争)
     let config = state.config.read().clone();
     let holidays = state.holidays.read().clone();
     let player_history = state.player_histories.read()
         .get(&req.player_id).cloned().unwrap_or_default();
 
-    // 3. 执行核心逻辑 (纯计算)
+    // 3. 执行纯计算逻辑
     let (resp, record) = execute_trade_logic(
         &req, &config, &holidays, &player_history, is_buy, 
         &state.env_cache, &state.http_client
     ).await;
 
-    // 4. 异步持久化
+    // 4. 异步持久化 (不阻塞响应)
     if let Some(r) = record {
         tokio::spawn(persist_transaction(state, r));
     }
 
-    Json(resp)
+    // 5. 统一返回 Response 类型
+    Json(resp).into_response()
 }
 
 // =========================================================================
-// 3. 市场行情 (Market Prices)
+// 3. 市场行情查询 (Market Prices)
 // =========================================================================
 
 pub async fn get_market_prices(
@@ -89,12 +90,12 @@ pub async fn get_market_prices(
     let config = state.config.read().clone();
     let market_items = state.market_cache.read().clone();
     
-    // 计算环境指数
+    // 计算环境因子
     let (env_index, env_note) = environment::calculate_current_env_index(
         &config, &state.holidays.read(), &state.env_cache
     );
 
-    // 确定查询范围
+    // 确定目标物品集合
     let target_ids: HashSet<String> = if payload.item_ids.is_empty() {
         market_items.iter().map(|i| i.id.clone()).collect()
     } else {
@@ -103,7 +104,7 @@ pub async fn get_market_prices(
 
     let current_time = chrono::Utc::now().timestamp_millis();
     
-    // [优化] 锁外计算全局有效库存 (Global N_eff)
+    // [优化] 锁外聚合计算全服有效库存
     let global_neff = calculate_global_neff_optimized(&state, &target_ids, &config, current_time).await;
 
     // 组装结果
@@ -115,7 +116,7 @@ pub async fn get_market_prices(
             // 公式: N_total = N_history + N_static + Iota_item + Iota_global
             let final_neff = (history_n + item.n + item.iota + config.global_iota).max(0.0);
             
-            // 公式: Price = Base * Env * exp(-|λ| * N_total)
+            // 公式: P = Base * Env * exp(-|λ| * N_total)
             let raw_price = env_index * item.base_price * (-item.lambda.abs() * final_neff).exp();
             
             (item.id, MarketItemStatus::new(
@@ -135,15 +136,15 @@ pub async fn get_market_prices(
     }))
 }
 
-/// [修复] 正确实现的聚合逻辑
+/// 高性能库存聚合计算
 async fn calculate_global_neff_optimized(
     state: &AppState, 
     targets: &HashSet<String>, 
     config: &AppConfig, 
     ts: i64
 ) -> FxHashMap<String, f64> {
-    // 1. 快速快照：只克隆相关物品的交易记录
-    // 数据结构: Vec<(ItemId, Vec<SalesRecord>)>
+    // 1. 快速快照：只克隆相关物品的历史记录
+    // 返回结构: Vec<(ItemId, Vec<SalesRecord>)>
     let history_snapshot: Vec<(String, Vec<SalesRecord>)> = {
         let histories = state.player_histories.read();
         histories.values()
@@ -155,13 +156,12 @@ async fn calculate_global_neff_optimized(
             .collect()
     };
 
-    // 2. 锁外聚合计算
+    // 2. 锁外计算与累加
     let mut accumulator = FxHashMap::default();
     
     for (item_id, records) in history_snapshot {
         let val = PricingEngine::calculate_effective_n(&records, 0.0, config, ts);
         
-        // 累加不同玩家对同一物品贡献的 N_eff
         accumulator.entry(item_id)
             .and_modify(|v| *v += val)
             .or_insert(val);
@@ -171,7 +171,7 @@ async fn calculate_global_neff_optimized(
 }
 
 // =========================================================================
-// 4. 批量交易 (Batch)
+// 4. 批量处理 (Batch Processing)
 // =========================================================================
 
 pub async fn handle_batch_sell(
@@ -182,6 +182,7 @@ pub async fn handle_batch_sell(
         .map(|req| {
             let s = state.clone();
             async move {
+                // 每次迭代获取最新快照
                 let (cfg, hols, hist) = (
                     s.config.read().clone(), 
                     s.holidays.read().clone(), 
@@ -198,7 +199,7 @@ pub async fn handle_batch_sell(
                 resp
             }
         })
-        .buffer_unordered(10) // 并行度控制
+        .buffer_unordered(10) // 控制并发度为 10
         .collect::<Vec<_>>()
         .await;
 
@@ -206,29 +207,29 @@ pub async fn handle_batch_sell(
 }
 
 // =========================================================================
-// 5. 持久化与同步 (Persistence & Sync)
+// 5. 持久化与内存更新 (Persistence)
 // =========================================================================
 
 async fn persist_transaction(state: AppState, record: TransactionRecord) {
     state.metrics.total_trades.fetch_add(1, Ordering::Relaxed);
     
-    // 更新内存
+    // 更新内存缓存 (写锁)
     {
         let mut histories = state.player_histories.write();
         let entry = histories.entry(record.player_id.clone()).or_default();
-        // 确保名字是最新的
+        
+        // 更新玩家名缓存
         if entry.player_name != record.player_name {
             entry.player_name = record.player_name.clone();
         }
         
         let items = entry.item_sales.entry(record.item_id.clone()).or_default();
         
-        // [修复] 补全 SalesRecord 的 price 字段
+        // [关键] 构造 SalesRecord，补全 models.rs 中定义的 price 字段
         items.push(SalesRecord {
             timestamp: record.timestamp,
             amount: if record.action == "SELL" { record.amount } else { -record.amount },
             env_index: record.env_index,
-            // 简单计算单价，避免除以零
             price: if record.amount.abs() > 1e-9 { 
                 record.total_price / record.amount 
             } else { 
@@ -236,24 +237,22 @@ async fn persist_transaction(state: AppState, record: TransactionRecord) {
             },
         });
         
-        // 简单的滑动窗口清理
+        // 简单的内存清理策略 (保留最近100条)
         if items.len() > 100 { items.remove(0); }
     }
 
-    // 发送到后台写入通道
+    // 发送到后台文件写入通道
     if let Err(_) = state.tx.try_send(record) {
         state.metrics.channel_dropped.fetch_add(1, Ordering::Relaxed);
-        tracing::warn!("🔥 写入通道背压过高，丢弃日志以保护服务");
+        tracing::warn!("🔥 写入通道背压过高，丢弃日志以保护 API 响应速度");
     }
 }
 
-// [新增] 补充 main.rs 缺失的 sync_market 接口
-// 用于管理面板手动刷新市场配置或缓存
+// [新增] 市场同步接口 (Placeholder)
+// 用于管理面板强制刷新配置或缓存
 pub async fn sync_market(State(_state): State<AppState>) -> impl IntoResponse {
-    // 这里可以实现重新加载 Config 或清理缓存的逻辑
-    // 目前仅返回成功，作为占位符
     Json(serde_json::json!({ 
         "success": true, 
-        "message": "Market synced (Placeholder)" 
+        "message": "Market synced successfully" 
     }))
 }

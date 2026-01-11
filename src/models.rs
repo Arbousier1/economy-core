@@ -4,19 +4,20 @@ use rustc_hash::FxHashMap;
 use validator::Validate;
 
 // =========================================================================
-// 1. 宏定义 (适配 Postcard - 仅需 Serde)
+// 1. 宏定义 (修复 Default 冲突与 Postcard 适配)
 // =========================================================================
 
-/// 通用序列化宏：用于存盘和内部传输 (Postcard/Serde)
+/// 通用序列化宏：用于存盘和内部传输
+/// 注意：移除了 Default 派生，防止与手动 impl Default 冲突
 macro_rules! serializable {
     ($($item:tt)*) => {
-        #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+        #[derive(Debug, Clone, Serialize, Deserialize)]
         #[serde(rename_all = "camelCase")]
         $($item)*
     };
 }
 
-/// Web 模型宏：用于前端交互 (JSON/Serde + Validator)
+/// Web 模型宏：用于前端交互 (自带 Default 和 Validate)
 macro_rules! web_model {
     ($($item:tt)*) => {
         #[derive(Debug, Clone, Serialize, Deserialize, Default, Validate)]
@@ -64,6 +65,7 @@ mod defaults {
 // =========================================================================
 
 serializable! {
+    // AppConfig 手动实现了 Default，所以这里不能 derive Default
     pub struct AppConfig {
         pub global_iota: f64,
         pub base_env_index: f64,
@@ -84,7 +86,7 @@ serializable! {
     }
 }
 
-// 默认值实现
+// 手动实现 Default，定义游戏平衡性参数
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -109,6 +111,7 @@ impl Default for AppConfig {
 }
 
 serializable! {
+    #[derive(Default)] // 其他结构体自动派生 Default
     pub struct MarketItem {
         #[serde(alias = "key")] 
         pub id: String,
@@ -144,6 +147,7 @@ impl MarketItemStatus {
 }
 
 serializable! {
+    #[derive(Default)]
     pub struct EnvCache {
         pub index: f64,
         pub last_update: i64,
@@ -157,16 +161,18 @@ serializable! {
 // =========================================================================
 
 serializable! {
+    #[derive(Default)]
     pub struct SalesRecord {
         pub timestamp: i64,
         pub amount: f64,
         pub env_index: f64,
         #[serde(default)]
-        pub price: f64,
+        pub price: f64, // 对应 api.rs 中的使用
     }
 }
 
 serializable! {
+    #[derive(Default)]
     pub struct PlayerSalesHistory {
         pub player_id: String,
         pub player_name: String,
@@ -175,6 +181,7 @@ serializable! {
 }
 
 serializable! {
+    #[derive(Default)]
     pub struct TransactionRecord {
         pub timestamp: i64,
         pub amount: f64,
@@ -204,7 +211,7 @@ impl TransactionRecord {
 }
 
 // =========================================================================
-// 5. API 请求/响应模型 (对齐 api.rs 和 logic.rs)
+// 5. API 请求/响应模型 (Strict Alignment)
 // =========================================================================
 
 web_model! {
@@ -213,7 +220,7 @@ web_model! {
         pub player_name: String,
         pub item_id: String,
         pub amount: f64,
-        // logic.rs 需要的参数
+        // logic.rs 计算所需的参数
         pub base_price: f64,
         pub decay_lambda: f64,
         pub iota: Option<f64>,
@@ -238,7 +245,7 @@ web_model! {
     pub struct BatchTradeRequest {
         pub player_id: String,
         pub player_name: String,
-        pub requests: Vec<TradeRequest>, // 对应 api.rs 中的调用
+        pub requests: Vec<TradeRequest>, // 对应 api.rs 的 batch.requests
     }
 }
 
