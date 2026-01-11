@@ -1,10 +1,6 @@
 use crate::models::{
     AppConfig, TradeRequest, TradeResponse, TransactionRecord, 
-<<<<<<< HEAD
     PlayerSalesHistory, EnvCache, Roundable 
-=======
-    PlayerSalesHistory, EnvCache, Roundable, SalesRecord
->>>>>>> 6a82f50 (修复后端持久化)
 };
 use std::collections::HashMap;
 use chrono::{Utc, Local}; 
