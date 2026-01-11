@@ -1,47 +1,27 @@
-name: CI
+name: Rust Build
 
 on:
   push:
-    branches: ["main", "master"]
+    branches: [ "main" ]
   pull_request:
-  workflow_dispatch:
+    branches: [ "main" ]
 
 jobs:
   build:
-    name: Build ${{ matrix.target }}
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            binary: economy-core
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            binary: economy-core
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            binary: economy-core.exe
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
-          target: ${{ matrix.target }}
-          cache: true
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Build release
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release
 
-      - name: Upload artifact
+      - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: economy-core-${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/${{ matrix.binary }}
-          if-no-files-found: error
+          name: rust-binary  # 下载时的压缩包名称
+          path: target/release/economy-core  # 替换为你的二进制文件名
