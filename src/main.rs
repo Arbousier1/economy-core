@@ -2,25 +2,29 @@ mod models;
 mod logic;
 mod api;
 
-use ax_rt::{routing::{get, post}, Router, http::StatusCode};
+// [修复] ax_rt -> axum
+use axum::{routing::{get, post}, Router, http::StatusCode};
 use parking_lot::RwLock;
-use std::{collections::{HashMap, VecDeque}, fs, io::{self, Cursor}, net::SocketAddr, sync::{Arc, atomic::{AtomicU64, Ordering}}, time::Duration};
+use std::{collections::{HashMap, VecDeque}, fs, io, net::SocketAddr, sync::{Arc, atomic::{AtomicU64, Ordering}}, time::Duration};
 use tokio::{sync::mpsc, signal, task, time};
-use tower_http::{cors::CorsLayer, services::ServeDir, timeout::TimeoutLayer};
+use tower_http::{cors::CorsLayer, timeout::TimeoutLayer};
 use tracing::{error, info, warn};
 use chrono::Local;
-use bincode::{config, config::Configuration};
+
+// [新增] 引入 postcard
+use postcard;
 
 use crate::models::*;
 
-// --- 核心常量优化 ---
+// --- 核心常量 ---
 const CONFIG_FILE: &str = "config.bin";
 const HISTORY_FILE: &str = "history.bin";
 const PLAYER_DATA_FILE: &str = "player_data.bin";
-const CHANNEL_CAPACITY: usize = 2_000; // 降低容量以实现背压控制，防止 OOM
+const CHANNEL_CAPACITY: usize = 2_000;
 const MAX_CACHE_SIZE: usize = 1000;
-const BATCH_SIZE: usize = 50;           // 每累计 50 条记录执行一次物理写入
-const BINCODE_CFG: Configuration = config::standard();
+const BATCH_SIZE: usize = 50;
+
+// [移除] BINCODE_CFG (Postcard 不需要配置对象)
 
 pub struct SystemMetrics {
     pub total_trades: AtomicU64,
@@ -34,7 +38,7 @@ pub struct AppState {
     pub config: Arc<RwLock<AppConfig>>,
     pub holidays: Arc<RwLock<HashMap<String, bool>>>,
     pub tx: mpsc::Sender<TransactionRecord>,
-    pub history_cache: Arc<RwLock<VecDeque<TransactionRecord>>>, // 改为双端队列优化 O(1) 弹出
+    pub history_cache: Arc<RwLock<VecDeque<TransactionRecord>>>,
     pub market_cache: Arc<RwLock<Vec<MarketItem>>>,
     pub metrics: Arc<SystemMetrics>,
     pub player_histories: Arc<RwLock<HashMap<String, PlayerSalesHistory>>>,
@@ -43,24 +47,27 @@ pub struct AppState {
 }
 
 // =========================================================================
-// 1. 强化存储引擎 (Atomic & Batch IO)
+// 1. 强化存储引擎 (适配 Postcard)
 // =========================================================================
 
 struct Storage;
 impl Storage {
+    // [修改] 泛型约束仅需 DeserializeOwned
     fn load<T: serde::de::DeserializeOwned>(file: &str) -> Option<T> {
         fs::read(file).ok().and_then(|data| {
-            bincode::decode_from_slice(&data, BINCODE_CFG).ok().map(|(item, _)| item)
+            // [修改] 使用 postcard 反序列化
+            postcard::from_bytes(&data).ok()
         })
     }
 
-    /// 原子保存 + 简单重试逻辑
+    // [修改] 泛型约束仅需 Serialize
     fn atomic_save<T: serde::Serialize>(file: &str, data: &T) -> io::Result<()> {
         let temp_path = format!("{}.tmp", file);
-        let bytes = bincode::encode_to_vec(data, BINCODE_CFG)
+        
+        // [修改] 使用 postcard 序列化 (to_stdvec 需要开启 use-std feature)
+        let bytes = postcard::to_stdvec(data)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         
-        // 如果数据量较大 (>2MB)，可以在此处引入 zstd 压缩
         fs::write(&temp_path, bytes)?;
         fs::rename(&temp_path, file)
     }
@@ -82,14 +89,15 @@ async fn background_writer_task(
         Err(e) => { error!("🚨 历史文件打开失败: {}", e); return; }
     };
     
+    // 使用 buffer 减少系统调用
     let mut writer = tokio::io::BufWriter::with_capacity(256 * 1024, file);
     let mut batch = Vec::with_capacity(BATCH_SIZE);
-    let mut flush_interval = time::interval(Duration::from_millis(500)); // 即使没满 50 条，每 0.5s 也强行刷盘
+    let mut flush_interval = time::interval(Duration::from_millis(500));
 
     loop {
         tokio::select! {
             Some(record) = rx.recv() => {
-                // 1. 更新内存循环缓存 (O(1) 操作)
+                // 1. 更新内存循环缓存
                 {
                     let mut cache = history_cache.write();
                     cache.push_back(record.clone());
@@ -124,7 +132,8 @@ async fn flush_batch(
 ) {
     use tokio::io::AsyncWriteExt;
     for record in batch.drain(..) {
-        if let Ok(bytes) = bincode::encode_to_vec(&record, BINCODE_CFG) {
+        // [修改] 使用 postcard 序列化单条记录
+        if let Ok(bytes) = postcard::to_stdvec(&record) {
             if let Err(e) = writer.write_all(&bytes).await {
                 metrics.write_failures.fetch_add(1, Ordering::Relaxed);
                 error!("❌ 批量写入中单条记录失败: {:?}", e);
@@ -135,13 +144,13 @@ async fn flush_batch(
 }
 
 // =========================================================================
-// 3. 入口与生命周期增强
+// 3. 入口与生命周期
 // =========================================================================
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
-    info!("🚀 Kyochigo Economy Core v4.0 (Batching Mode) 启动中...");
+    info!("🚀 Kyochigo Economy Core v4.0 (Postcard Edition) 启动中...");
 
     let metrics = Arc::new(SystemMetrics {
         total_trades: AtomicU64::new(0),
@@ -163,13 +172,17 @@ async fn main() {
         market_cache: Arc::new(RwLock::new(Vec::new())),
         metrics: metrics.clone(),
         player_histories: Arc::new(RwLock::new(Storage::load(PLAYER_DATA_FILE).unwrap_or_default())),
-        http_client: reqwest::Client::builder().timeout(Duration::from_secs(5)).build().unwrap(),
+        // 修正 reqwest 客户端构建
+        http_client: reqwest::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .expect("HTTP Client 构建失败"),
         env_cache: Arc::new(RwLock::new(None)),
     };
 
     let writer_handle = tokio::spawn(background_writer_task(rx, state.history_cache.clone(), metrics));
 
-    // 路由构建 (保持原有 API)
+    // 路由构建 (Axum 0.8)
     let app = Router::new()
         .route("/calculate_sell", post(api::handle_sell))
         .route("/calculate_buy", post(api::handle_buy))
@@ -178,16 +191,20 @@ async fn main() {
         .layer(TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, Duration::from_secs(10)))
         .with_state(state.clone());
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], state.config.read().port));
+    let port = state.config.read().port;
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    
+    // 绑定端口
     let listener = tokio::net::TcpListener::bind(addr).await.expect("端口绑定失败");
     info!("✨ API 节点已上线: {}", addr);
 
+    // 启动服务
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await
         .unwrap();
 
-    // 优雅停机：增加重试逻辑的保存
+    // 优雅停机
     perform_graceful_cleanup(state, writer_handle).await;
 }
 
@@ -200,7 +217,7 @@ async fn perform_graceful_cleanup(state: AppState, writer_handle: task::JoinHand
         warn!("⏰ 刷盘任务超时，部分流水可能丢失。");
     }
 
-    // 定义泛型辅助函数，替代之前的 dyn 闭包
+    // 内部函数：保存逻辑
     async fn save_with_retry<T: serde::Serialize>(name: &str, data: &T) {
         for i in 1..=3 {
             match Storage::atomic_save(name, data) {
@@ -210,7 +227,6 @@ async fn perform_graceful_cleanup(state: AppState, writer_handle: task::JoinHand
                 }
                 Err(e) => warn!("⚠️ {} 保存失败 (第{}次重试): {:?}", name, i, e),
             }
-            // 在 async 中必须使用 tokio 的 sleep，否则会阻塞线程
             time::sleep(Duration::from_millis(500)).await;
         }
     }
@@ -219,17 +235,28 @@ async fn perform_graceful_cleanup(state: AppState, writer_handle: task::JoinHand
     let final_histories = state.player_histories.read();
     let final_config = state.config.read();
 
-    // 顺序执行异步保存
     save_with_retry(PLAYER_DATA_FILE, &*final_histories).await;
     save_with_retry(CONFIG_FILE, &*final_config).await;
 
     info!("👋 所有数据已同步，系统安全退出。");
 }
 
+// [修复] 正确的信号处理，避免临时值生命周期问题
 async fn shutdown_signal() {
-    let ctrl_c = signal::ctrl_c();
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
     #[cfg(unix)]
-    let terminate = signal::unix::signal(signal::unix::SignalKind::terminate()).unwrap().recv();
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
     #[cfg(not(unix))]
     let terminate = std::future::pending::<()>();
 

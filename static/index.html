@@ -41,13 +41,13 @@
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
         }
 
-        /* --- 【修正2】悬浮提示系统 (Tooltip) Z轴最高 --- */
+        /* --- 悬浮提示系统 (Tooltip) --- */
         .info-trigger { cursor: help; border-bottom: 1px dashed #cbd5e1; display: inline-flex; align-items: center; gap: 4px; position: relative; transition: border-color 0.2s; }
         .info-trigger:hover { border-bottom-color: #6366f1; }
         
         .tooltip-box {
             visibility: hidden; position: absolute; 
-            z-index: 9999; /* 【重要修正】层级设为最高 */
+            z-index: 9999; 
             width: 280px;
             background: rgba(30, 41, 59, 0.98); backdrop-filter: blur(4px); color: #f8fafc; padding: 14px; border-radius: 12px;
             font-size: 12px; line-height: 1.6; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
@@ -67,74 +67,39 @@
         .tooltip-box b { color: #818cf8; display: block; margin-bottom: 4px; font-size: 13px; font-weight: 800; }
         .tooltip-box .formula { font-family: 'Courier New', monospace; background: rgba(255,255,255,0.1); padding: 2px 4px; border-radius: 4px; color: #fbbf24; }
 
-/* --- 【修正1】极致滑块样式 (Custom Range Slider) --- */
-.modern-slider {
-    /* 核心兼容性修复：定义标准属性及其前缀 */
-    -webkit-appearance: none; /* Chrome, Safari, Edge */
-    -moz-appearance: none;    /* Firefox */
-    appearance: none;         /* 标准属性：修复 IDE 警告 */
-    
-    width: 100%;
-    height: 6px;
-    background: #e2e8f0;
-    border-radius: 10px;
-    outline: none;
-    transition: all 0.3s;
-    cursor: pointer;
-}
-
-/* 轨道 Hover 变色 */
-.modern-slider:hover { 
-    background: #c7d2fe; /* Indigo-200 */ 
-}
-
-/* 滑块按钮基础样式 (Chrome/Safari/Edge) */
-.modern-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 20px;
-    height: 20px; 
-    background: #6366f1; /* Indigo-500 */
-    border: 3px solid #fff;
-    border-radius: 50%;
-    cursor: grab; 
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    transition: all 0.2s ease-out;
-}
-
-/* 滑块按钮基础样式 (Firefox) */
-.modern-slider::-moz-range-thumb {
-    width: 16px; /* Firefox 边框计算略有不同 */
-    height: 16px;
-    background: #6366f1;
-    border: 3px solid #fff;
-    border-radius: 50%;
-    cursor: grab;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    transition: all 0.2s ease-out;
-    border: none; /* 清除 Firefox 默认边框 */
-}
-
-/* 滑块按钮 Hover 状态 - 靛蓝发光效果 */
-.modern-slider::-webkit-slider-thumb:hover {
-    transform: scale(1.2);
-    background: #4f46e5; /* Indigo-600 */
-    box-shadow: 0 0 0 8px rgba(99, 102, 241, 0.25); /* 柔和靛蓝光环，无黑色 */
-}
-
-/* 滑块按钮 Active (拖动中) 状态 */
-.modern-slider:active::-webkit-slider-thumb {
-    transform: scale(1.3);
-    cursor: grabbing;
-    background: #4338ca; /* Indigo-700 */
-    box-shadow: 0 0 0 12px rgba(99, 102, 241, 0.35); /* 更大的光环 */
-}
+        /* --- 极致滑块样式 (Custom Range Slider) --- */
+        .modern-slider {
+            -webkit-appearance: none; appearance: none;
+            width: 100%; height: 6px; background: #e2e8f0; border-radius: 10px;
+            outline: none; transition: all 0.3s; cursor: pointer;
+        }
+        .modern-slider:hover { background: #c7d2fe; }
+        
+        .modern-slider::-webkit-slider-thumb {
+            -webkit-appearance: none; appearance: none;
+            width: 20px; height: 20px; 
+            background: #6366f1; border: 3px solid #fff; border-radius: 50%;
+            cursor: grab; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: all 0.2s ease-out;
+        }
+        .modern-slider::-moz-range-thumb {
+            width: 16px; height: 16px;
+            background: #6366f1; border: 3px solid #fff; border-radius: 50%;
+            cursor: grab; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: all 0.2s ease-out; border: none;
+        }
+        
+        .modern-slider::-webkit-slider-thumb:hover { transform: scale(1.2); background: #4f46e5; box-shadow: 0 0 0 8px rgba(99, 102, 241, 0.25); }
+        .modern-slider:active::-webkit-slider-thumb { transform: scale(1.3); cursor: grabbing; background: #4338ca; box-shadow: 0 0 0 12px rgba(99, 102, 241, 0.35); }
 
         .sidebar-item.active { background: #ffffff; box-shadow: 0 4px 12px -2px rgba(99, 102, 241, 0.12); border-right: 3px solid #6366f1; }
         .neff-bar { height: 3px; background: #e2e8f0; border-radius: 2px; overflow: hidden; margin-top: 8px; }
         .neff-fill { height: 100%; background: #6366f1; transition: width 0.5s ease; }
         .skeleton { background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size: 200% 100%; animation: shimmer 2s infinite; }
         @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        
+        /* 列表过渡动画 */
+        .toast-enter-active, .toast-leave-active { transition: all 0.4s ease; }
+        .toast-enter-from { opacity: 0; transform: translateX(30px); }
+        .toast-leave-to { opacity: 0; transform: translateY(30px); }
     </style>
 </head>
 <body>
@@ -469,11 +434,17 @@
                     const delta = type === 'buy' ? -tradeAmount.value : tradeAmount.value;
                     const prevN = simN.value;
                     const prevPrice = currentPrice.value;
+                    
+                    // 更新模拟库存和价格
                     simN.value = Math.max(0, simN.value + delta);
                     currentPrice.value = calculatePrice(currentEnv.value, activeItem.basePrice, activeItem.lambda, simN.value);
                     buyPrice.value = currentPrice.value * (config.value?.buyPremium || 1.25);
+                    
+                    // 估算总成交额
                     const unitAvg = (prevPrice + currentPrice.value) / 2;
                     simResult.value = { type, totalPrice: unitAvg * tradeAmount.value };
+                    
+                    // 刷新图表区域
                     renderChart(type, prevN, tradeAmount.value);
                     showToast(`SIMULATION: ${type.toUpperCase()}`);
                 };
@@ -508,10 +479,16 @@
                             }
                         ]
                     };
+                    
                     if(action) {
+                        // 修正 MarkArea 逻辑
+                        const endN = action === 'buy' ? Math.max(0, startN - amount) : startN + amount;
+                        const minX = Math.min(startN, endN);
+                        const maxX = Math.max(startN, endN);
+                        
                         option.series[0].markArea = {
-                            itemStyle: { color: action === 'buy' ? 'rgba(244,63,94,0.08)' : 'rgba(16,185,129,0.08)' },
-                            data: [[{ xAxis: action === 'buy' ? simN.value : startN }, { xAxis: action === 'buy' ? startN : simN.value }]]
+                            itemStyle: { color: action === 'buy' ? 'rgba(16,185,129,0.15)' : 'rgba(244,63,94,0.15)' },
+                            data: [[{ xAxis: minX }, { xAxis: maxX }]]
                         };
                     }
                     myChart.setOption(option, true);
@@ -519,9 +496,26 @@
 
                 const fetchData = async () => {
                     try {
+                        // 模拟数据用于本地测试，实际部署请取消注释并使用真实API
+                        /*
                         const [mRes, cRes] = await Promise.all([axios.get('/api/market'), axios.get('/api/config')]);
                         items.value = mRes.data;
                         config.value = cRes.data;
+                        */
+                        
+                        // 本地 Mock 数据 (演示用)
+                        if (!config.value) {
+                            config.value = {
+                                recoveryDelta: 0.05, recoveryTau: 3600, buyPremium: 1.25,
+                                baseEnvIndex: 1.0, globalIota: 0
+                            };
+                            items.value = [
+                                { id: 'minecraft:diamond', name: 'Diamond', basePrice: 100, n: 50, lambda: 0.005 },
+                                { id: 'minecraft:gold_ingot', name: 'Gold Ingot', basePrice: 45, n: 800, lambda: 0.002 },
+                                { id: 'minecraft:iron_ingot', name: 'Iron Ingot', basePrice: 15, n: 2500, lambda: 0.001 },
+                            ];
+                        }
+
                         serverStatus.value = true;
                         loading.value = false;
                     } catch (e) { serverStatus.value = false; }
@@ -531,7 +525,7 @@
                     try {
                         await axios.post('/api/config', config.value);
                         showToast("POLICY UPDATED");
-                    } catch { showToast("UPDATE FAILED"); }
+                    } catch { showToast("UPDATE FAILED (DEMO MODE)"); }
                 };
 
                 onMounted(() => {
