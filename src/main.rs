@@ -17,6 +17,11 @@ use crate::models::*;
 const CONFIG_FILE: &str = "config.bin";
 const HISTORY_FILE: &str = "history.bin";
 const PLAYER_DATA_FILE: &str = "player_data.bin";
+// [新增] 用于保存市场物品的实时状态（价格、热度、库存等）
+const MARKET_DATA_FILE: &str = "market_data.bin";
+// [新增] 用于保存环境参数（可选，取决于是否需要持久化环境倍率）
+const ENV_DATA_FILE: &str = "env_data.bin";
+
 const CHANNEL_CAPACITY: usize = 2_000;
 const MAX_CACHE_SIZE: usize = 1000;
 const BATCH_SIZE: usize = 50;
@@ -137,7 +142,7 @@ async fn flush_batch(
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
-    info!("🚀 Kyochigo Economy Core v4.0 (Postcard Edition) 启动中...");
+    info!("🚀 Kyochigo Economy Core v4.1 (State Persistence Edition) 启动中...");
 
     let metrics = Arc::new(SystemMetrics {
         total_trades: AtomicU64::new(0),
@@ -146,35 +151,50 @@ async fn main() {
         start_time: Local::now().timestamp(),
     });
 
+    // --- 数据加载阶段 ---
     let config_data = Storage::load::<AppConfig>(CONFIG_FILE).unwrap_or_default();
     let initial_history = Storage::load::<VecDeque<TransactionRecord>>(HISTORY_FILE).unwrap_or_default();
     
+    // [修复] 加载上次关闭时的市场状态（包含价格、热度等）
+    let initial_market = Storage::load::<Vec<MarketItem>>(MARKET_DATA_FILE).unwrap_or_default();
+    if initial_market.is_empty() {
+        warn!("⚠️ 未找到市场状态文件或为空，将使用默认初始化 (价格可能重置)");
+    } else {
+        info!("📦 已恢复 {} 个物品的市场状态", initial_market.len());
+    }
+
+    // [修复] 加载环境数据
+    let initial_env = Storage::load::<Option<EnvCache>>(ENV_DATA_FILE).unwrap_or(None);
+
     let (tx, rx) = mpsc::channel(CHANNEL_CAPACITY);
+    
     let state = AppState {
         config: Arc::new(RwLock::new(config_data)),
         holidays: Arc::new(RwLock::new(HashMap::new())),
         tx,
         history_cache: Arc::new(RwLock::new(initial_history)),
-        market_cache: Arc::new(RwLock::new(Vec::new())),
+        // [修改] 使用加载的数据初始化
+        market_cache: Arc::new(RwLock::new(initial_market)),
         metrics: metrics.clone(),
         player_histories: Arc::new(RwLock::new(Storage::load(PLAYER_DATA_FILE).unwrap_or_default())),
         http_client: reqwest::Client::builder()
             .timeout(Duration::from_secs(5))
             .build()
             .expect("HTTP Client 构建失败"),
-        env_cache: Arc::new(RwLock::new(None)),
+        // [修改] 使用加载的数据初始化
+        env_cache: Arc::new(RwLock::new(initial_env)),
     };
 
     let writer_handle = tokio::spawn(background_writer_task(rx, state.history_cache.clone(), metrics));
 
-    // [核心修复] 补全所有 Java 端需要的路由
+    // Java 端需要的路由
     let app = Router::new()
         // 基础交易
         .route("/calculate_sell", post(api::handle_sell))
         .route("/calculate_buy", post(api::handle_buy))
-        // 批量交易 (Java: sendBatchSellRequest)
+        // 批量交易
         .route("/batch_sell", post(api::handle_batch_sell))
-        // 行情查询 (Java: fetchBulkPrices & 前端)
+        // 行情查询
         .route("/api/market/prices", post(api::get_market_prices))
         // 数据同步
         .route("/api/market/sync", post(api::sync_market))
@@ -218,11 +238,19 @@ async fn perform_graceful_cleanup(state: AppState, writer_handle: task::JoinHand
         }
     }
 
+    // 获取所有数据的读锁
     let final_histories = state.player_histories.read();
     let final_config = state.config.read();
+    let final_market = state.market_cache.read();
+    let final_env = state.env_cache.read();
 
+    // 执行保存
     save_with_retry(PLAYER_DATA_FILE, &*final_histories).await;
     save_with_retry(CONFIG_FILE, &*final_config).await;
+    
+    // [核心修复] 保存市场状态和环境数据
+    save_with_retry(MARKET_DATA_FILE, &*final_market).await;
+    save_with_retry(ENV_DATA_FILE, &*final_env).await;
 
     info!("👋 所有数据已同步，系统安全退出。");
 }

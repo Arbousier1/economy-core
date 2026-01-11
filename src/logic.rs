@@ -1,6 +1,10 @@
 use crate::models::{
     AppConfig, TradeRequest, TradeResponse, TransactionRecord, 
+<<<<<<< HEAD
     PlayerSalesHistory, EnvCache, Roundable 
+=======
+    PlayerSalesHistory, EnvCache, Roundable, SalesRecord
+>>>>>>> 6a82f50 (修复后端持久化)
 };
 use std::collections::HashMap;
 use chrono::{Utc, Local}; 
@@ -32,6 +36,8 @@ struct TradeContext<'a> {
     holidays: &'a HashMap<String, bool>,
     player_history: &'a PlayerSalesHistory,
     env_cache: &'a RwLock<Option<EnvCache>>,
+    // [新增] 接收外部传入的持久化 N 值
+    current_market_n: f64,
 }
 
 impl<'a> TradeContext<'a> {
@@ -49,7 +55,8 @@ impl<'a> TradeContext<'a> {
         // 2. 环境
         let (env_idx, env_note) = self.resolve_env();
 
-        // 3. 库存
+        // 3. 库存 (Effective N)
+        // 计算逻辑：历史衰减 + 持久化 N + 临时偏移 Iota
         let n_eff = self.calculate_n_eff(now_ms);
 
         // 4. 定价
@@ -78,8 +85,15 @@ impl<'a> TradeContext<'a> {
     fn calculate_n_eff(&self, now_ms: i64) -> f64 {
         let history = self.player_history.item_sales.get(&self.req.item_id)
             .map(|v| v.as_slice()).unwrap_or(&[]);
+        
         let iota = self.req.iota.unwrap_or(self.config.global_iota);
-        PricingEngine::calculate_effective_n(history, iota, self.config, now_ms)
+
+        // [核心逻辑]
+        // 1. 计算近期交易的历史衰减值
+        let n_history = PricingEngine::calculate_history_decay(history, self.config, now_ms);
+        
+        // 2. 加上持久化的基础值 (current_market_n) 和 手动偏移 (iota)
+        (n_history + self.current_market_n + iota).max(0.0)
     }
 
     fn create_record(&self, resp: &TradeResponse, note: String, is_buy: bool, ts: i64) -> Option<TransactionRecord> {
@@ -93,10 +107,12 @@ impl<'a> TradeContext<'a> {
     }
 }
 
+// [修改] 函数签名增加 current_market_n
 pub async fn execute_trade_logic(
     req: &TradeRequest, config: &AppConfig, holidays: &HashMap<String, bool>,
     player_history: &PlayerSalesHistory, is_buy: bool,
     env_cache: &RwLock<Option<EnvCache>>, http_client: &reqwest::Client,
+    current_market_n: f64, // 新增参数
 ) -> (TradeResponse, Option<TransactionRecord>) {
     if req.amount.abs() < constants::EPSILON_AMT || !req.amount.is_finite() {
         let mut resp = empty_resp(1.0, 0.0);
@@ -104,8 +120,11 @@ pub async fn execute_trade_logic(
         return (resp, None);
     }
 
-    TradeContext { req, config, holidays, player_history, env_cache }
-        .execute(is_buy, http_client).await
+    TradeContext { 
+        req, config, holidays, player_history, env_cache, 
+        current_market_n 
+    }
+    .execute(is_buy, http_client).await
 }
 
 // =========================================================================
@@ -114,7 +133,10 @@ pub async fn execute_trade_logic(
 
 pub mod pricing {
     use super::constants;
+<<<<<<< HEAD
     // [修复] 将 SalesRecord 移入此处引用，解决 unused import 警告
+=======
+>>>>>>> 6a82f50 (修复后端持久化)
     use crate::models::{AppConfig, SalesRecord, Roundable};
 
     pub struct PricingEngine;
@@ -156,16 +178,21 @@ pub mod pricing {
             revenue.max(0.0).round_2()
         }
 
-        pub fn calculate_effective_n(history: &[SalesRecord], iota: f64, config: &AppConfig, now_ms: i64) -> f64 {
-            let n_sum: f64 = history.iter().map(|r| {
+        // [拆分] 纯历史衰减计算
+        pub fn calculate_history_decay(history: &[SalesRecord], config: &AppConfig, now_ms: i64) -> f64 {
+            history.iter().map(|r| {
                 let dt = ((now_ms - r.timestamp) as f64 / 1000.0).max(0.0);
                 let decay = if config.recovery_delta > 0.0 {
                     (-config.recovery_delta * (dt / config.recovery_tau)).exp()
                 } else { 1.0 };
                 r.amount * decay
-            }).sum();
+            }).sum()
+        }
 
-            (n_sum + iota).max(0.0)
+        // 保持兼容性的 helper，如果还需要的话
+        pub fn calculate_effective_n(history: &[SalesRecord], iota: f64, config: &AppConfig, now_ms: i64) -> f64 {
+             let n_history = Self::calculate_history_decay(history, config, now_ms);
+             (n_history + iota).max(0.0)
         }
     }
 }
@@ -180,13 +207,16 @@ pub mod environment {
     use chrono::{Datelike, Local};
     use std::collections::HashMap;
     use parking_lot::RwLock;
+<<<<<<< HEAD
     
     // [修复] 将 rand 引入移到 mod 内部作用域，彻底解决 E0425 错误
+=======
+>>>>>>> 6a82f50 (修复后端持久化)
     use rand::thread_rng; 
     use rand_distr::{Distribution, Normal};
 
     pub fn calculate_current_env_index(config: &AppConfig, holidays: &HashMap<String, bool>, 
-                                      cache: &RwLock<Option<EnvCache>>) -> (f64, String) {
+                                       cache: &RwLock<Option<EnvCache>>) -> (f64, String) {
         let now = Local::now();
         let ts = now.timestamp();
 
@@ -215,8 +245,7 @@ pub mod environment {
         let ymd = now.format("%Y-%m-%d").to_string();
         let md = now.format("%m-%d").to_string();
 
-        let is_off = hols.get(&ymd).copied().unwrap_or(false);
-        if is_off {
+        if hols.get(&ymd).copied().unwrap_or(false) {
             eps -= config.public_holiday_factor;
             tags.push("Holiday");
         }
@@ -227,11 +256,14 @@ pub mod environment {
             eps -= config.holiday_factor; tags.push("Summer");
         }
 
-        if now.weekday().number_from_monday() >= 6 && !is_off {
+        if now.weekday().number_from_monday() >= 6 && !hols.get(&ymd).copied().unwrap_or(false) {
             eps -= config.weekend_factor; tags.push("Weekend");
         }
 
+<<<<<<< HEAD
         // [修复] 现在这里的 thread_rng 能够正确被编译器找到了
+=======
+>>>>>>> 6a82f50 (修复后端持久化)
         let mut r = thread_rng(); 
         let noise = Normal::new(0.0, config.noise_std.max(0.0001))
             .unwrap_or_else(|_| Normal::new(0.0, 1.0).unwrap())
