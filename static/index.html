@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Economy Core | 工业级数值控制台</title>
     
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
@@ -18,6 +22,8 @@
             background-color: #f8fafc; color: #334155;
             -webkit-font-smoothing: antialiased;
         }
+        /* 数字使用等宽字体，对齐更美观 */
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
 
         /* --- 动态背景动画 --- */
         .ambient-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
@@ -65,9 +71,9 @@
         .info-trigger:hover .tooltip-box.tooltip-right { transform: translateY(0); }
         .info-trigger:hover .tooltip-box.tooltip-left { transform: translateY(0); }
         .tooltip-box b { color: #818cf8; display: block; margin-bottom: 4px; font-size: 13px; font-weight: 800; }
-        .tooltip-box .formula { font-family: 'Courier New', monospace; background: rgba(255,255,255,0.1); padding: 2px 4px; border-radius: 4px; color: #fbbf24; }
+        .tooltip-box .formula { font-family: 'JetBrains Mono', monospace; background: rgba(255,255,255,0.1); padding: 2px 4px; border-radius: 4px; color: #fbbf24; }
 
-        /* --- 极致滑块样式 (Custom Range Slider) --- */
+        /* --- 极致滑块样式 --- */
         .modern-slider {
             -webkit-appearance: none; appearance: none;
             width: 100%; height: 6px; background: #e2e8f0; border-radius: 10px;
@@ -96,7 +102,6 @@
         .skeleton { background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size: 200% 100%; animation: shimmer 2s infinite; }
         @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
         
-        /* 列表过渡动画 */
         .toast-enter-active, .toast-leave-active { transition: all 0.4s ease; }
         .toast-enter-from { opacity: 0; transform: translateX(30px); }
         .toast-leave-to { opacity: 0; transform: translateY(30px); }
@@ -143,8 +148,8 @@
                         <span class="text-[9px] font-mono bg-slate-200 px-1.5 py-0.5 rounded text-slate-500 uppercase">{{ item.id.split(':')[1] || 'item' }}</span>
                     </div>
                     <div class="flex justify-between items-center text-[10px]">
-                        <span class="text-slate-400 font-medium">Neff: {{ Math.round(item.n) }}</span>
-                        <span class="text-indigo-600 font-bold tracking-tighter">P₀: {{ item.basePrice.toFixed(1) }}</span>
+                        <span class="text-slate-400 font-medium">Neff: <span class="font-mono">{{ Math.round(item.n) }}</span></span>
+                        <span class="text-indigo-600 font-bold tracking-tighter">P₀: <span class="font-mono">{{ item.basePrice.toFixed(1) }}</span></span>
                     </div>
                     <div class="neff-bar">
                         <div class="neff-fill" :style="{ width: Math.min(100, (item.n / 1000) * 100) + '%', backgroundColor: getNeffColor(item.n) }"></div>
@@ -204,7 +209,7 @@
                             </h3>
                             <div v-if="activeItem.id" class="space-y-5">
                                 <div>
-                                    <div class="text-2xl font-black text-slate-900 tracking-tight">{{ activeItem.name }}</div>
+                                    <div class="text-2xl font-black text-slate-900 tracking-tight leading-tight">{{ activeItem.name }}</div>
                                     <div class="text-[9px] text-slate-400 font-mono uppercase bg-slate-100 px-2 py-1 rounded inline-block mt-2 tracking-tighter">{{ activeItem.id }}</div>
                                 </div>
                                 <div class="grid gap-3">
@@ -213,7 +218,7 @@
                                             结算价 (SELL)
                                             <div class="tooltip-box">
                                                 <b>最终收购定价</b>
-                                                这是系统从玩家手中回收物资的价格。<br>
+                                                系统从玩家手中回收物资的价格。<br>
                                                 <span class="formula">P_sell = ε · P_base · e^(-λ · Neff)</span>
                                             </div>
                                         </div>
@@ -225,7 +230,7 @@
                                                 买入价 (BUY)
                                                 <div class="tooltip-box tooltip-left">
                                                     <b>申购报价</b>
-                                                    系统售出给玩家的价格，包含风险溢价。<br>
+                                                    系统售出给玩家的价格。<br>
                                                     <span class="formula">Buy = Sell · Spread</span>
                                                 </div>
                                             </div>
@@ -264,7 +269,7 @@
                                     </div>
                                     
                                     <div class="relative pt-2">
-                                        <input type="range" v-model.number="tradeAmount" min="1" max="2304" step="64" 
+                                        <input type="range" v-model.number="tradeAmount" min="1" max="2304" step="1" 
                                                class="modern-slider">
                                         <div class="flex justify-between mt-4 text-[9px] font-bold text-slate-300 uppercase tracking-tighter">
                                             <span>MIN (1)</span>
@@ -423,9 +428,10 @@
                         }
                         renderChart();
                     } catch (e) {
-                        showToast("Failed to Fetch Live Data");
+                        showToast("使用本地模拟数据 (离线模式)");
                         simN.value = item.n || 0;
                         currentPrice.value = calculatePrice(currentEnv.value, item.basePrice, item.lambda, simN.value);
+                        renderChart();
                     }
                 };
 
@@ -446,7 +452,7 @@
                     
                     // 刷新图表区域
                     renderChart(type, prevN, tradeAmount.value);
-                    showToast(`SIMULATION: ${type.toUpperCase()}`);
+                    showToast(`模拟交易: ${type === 'buy' ? '申购' : '抛售'} ${tradeAmount.value} 个`);
                 };
 
                 const renderChart = (action, startN, amount) => {
@@ -481,13 +487,12 @@
                     };
                     
                     if(action) {
-                        // 修正 MarkArea 逻辑
                         const endN = action === 'buy' ? Math.max(0, startN - amount) : startN + amount;
                         const minX = Math.min(startN, endN);
                         const maxX = Math.max(startN, endN);
                         
                         option.series[0].markArea = {
-                            itemStyle: { color: action === 'buy' ? 'rgba(16,185,129,0.15)' : 'rgba(244,63,94,0.15)' },
+                            itemStyle: { color: action === 'buy' ? 'rgba(244,63,94,0.15)' : 'rgba(16,185,129,0.15)' }, // 买入红/卖出绿
                             data: [[{ xAxis: minX }, { xAxis: maxX }]]
                         };
                     }
@@ -496,14 +501,13 @@
 
                 const fetchData = async () => {
                     try {
-                        // 模拟数据用于本地测试，实际部署请取消注释并使用真实API
-                        /*
+                        // 尝试从后端获取数据
                         const [mRes, cRes] = await Promise.all([axios.get('/api/market'), axios.get('/api/config')]);
                         items.value = mRes.data;
                         config.value = cRes.data;
-                        */
-                        
-                        // 本地 Mock 数据 (演示用)
+                        serverStatus.value = true;
+                    } catch (e) {
+                        // 后端连接失败时，加载演示用 Mock 数据
                         if (!config.value) {
                             config.value = {
                                 recoveryDelta: 0.05, recoveryTau: 3600, buyPremium: 1.25,
@@ -513,19 +517,20 @@
                                 { id: 'minecraft:diamond', name: 'Diamond', basePrice: 100, n: 50, lambda: 0.005 },
                                 { id: 'minecraft:gold_ingot', name: 'Gold Ingot', basePrice: 45, n: 800, lambda: 0.002 },
                                 { id: 'minecraft:iron_ingot', name: 'Iron Ingot', basePrice: 15, n: 2500, lambda: 0.001 },
+                                { id: 'minecraft:netherite_ingot', name: 'Netherite Ingot', basePrice: 450, n: 10, lambda: 0.008 },
                             ];
                         }
-
-                        serverStatus.value = true;
+                        serverStatus.value = false; 
+                    } finally {
                         loading.value = false;
-                    } catch (e) { serverStatus.value = false; }
+                    }
                 };
 
                 const saveConfig = async () => {
                     try {
                         await axios.post('/api/config', config.value);
-                        showToast("POLICY UPDATED");
-                    } catch { showToast("UPDATE FAILED (DEMO MODE)"); }
+                        showToast("配置已同步至核心");
+                    } catch { showToast("同步失败 (演示模式)"); }
                 };
 
                 onMounted(() => {
