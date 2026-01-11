@@ -28,14 +28,25 @@ futures = "0.3"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
-# Networking & Security (修复核心：reqwest 0.13 配置)
-# 1. default-features = false: 关闭默认的 OpenSSL/native-tls
-# 2. features = ["rustls"]: 启用 Rust 原生 TLS (对应旧版 rustls-tls)
-# 3. features = ["json"]: 开启 JSON 响应解析
-# 4. features = ["http1", "http2"]: 确保 HTTP 协议支持 (以防关闭 default 后丢失)
-reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "http1", "http2", "gzip"] }
+# =================================================================
+# 关键修复区 (根据 reqwest 0.13.1 文档)
+# =================================================================
+# 1. default-features = false: 尽管 0.13 默认就是 rustls，但为了稳健，我们显式控制。
+# 2. features = ["rustls"]: 启用核心 Rustls 支持 (文档中确认存在的 flag)。
+# 3. features = ["json"]: 开启 JSON 支持。
+# 4. features = ["gzip", "brotli", "deflate"]: 开启压缩支持 (根据文档，分别对应 tower-http 实现)。
+# 5. features = ["http2"]: 显式开启 HTTP2 (文档显示它在默认列表里，手动开启更保险)。
+reqwest = { version = "0.13", default-features = false, features = [
+    "rustls", 
+    "rustls-native-certs", # 显式添加这个以确保在 Windows/Linux 上能读到系统证书
+    "json", 
+    "http2", 
+    "gzip", 
+    "brotli", 
+    "deflate"
+] }
 
-# 底层加密库 (配合 reqwest 的 rustls 使用)
+# 底层加密库
 aws-lc-rs = { version = "1.11", features = ["bindgen", "rustls"] }
 
 [profile.release]
