@@ -1,39 +1,35 @@
 [package]
 name = "economy-core"
 version = "2.0.0"
-edition = "2021"
+edition = "2024" # 升级到最新的 2024 版
 
 [dependencies]
-# 核心 Web 框架 (Axum 0.8)
+# 核心框架
 axum = { version = "0.8", features = ["macros"] }
 tokio = { version = "1", features = ["full", "signal"] }
 tower-http = { version = "0.6", features = ["fs", "cors", "timeout"] }
 
-# 序列化与数据处理
+# 序列化
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
-# bincode 2.0 正式版在 2026 年已稳定
-bincode = { version = "2.0", features = ["derive"] }
+bincode = { version = "2.0.0-rc.3", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 
-# 随机数与数学
+# 数学与工具
 rand = "0.9"
 rand_distr = "0.5"
 rustc-hash = "2.1.0"
-
-# 工具类
 parking_lot = "0.12"
 thiserror = "1.0"
-# 用于处理 API 请求校验
 validator = { version = "0.19", features = ["derive"] }
-# 异步流处理，修复 api.rs 中的 StreamExt 报错
 futures = "0.3"
 
-# 日志与监控
+# 网络与日志
+reqwest = { version = "0.13", features = ["json", "rustls-tls"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
-# 加密与底层 (GitHub Actions 建议开启预编译或在 YML 中安装 LLVM)
+# 底层加密 (GitHub Actions 构建时会自动处理环境)
 aws-lc-rs = { version = "1.11", features = ["bindgen"] }
 
 [profile.release]
