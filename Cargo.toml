@@ -4,29 +4,40 @@ version = "2.0.0"
 edition = "2021"
 
 [dependencies]
+# 核心 Web 框架 (Axum 0.8)
 axum = { version = "0.8", features = ["macros"] }
 tokio = { version = "1", features = ["full", "signal"] }
 tower-http = { version = "0.6", features = ["fs", "cors", "timeout"] }
+
+# 序列化与数据处理
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
-bincode = { version = "2.0.0-rc.3", features = ["derive"] }
+# bincode 2.0 正式版在 2026 年已稳定
+bincode = { version = "2.0", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
+
+# 随机数与数学
 rand = "0.9"
 rand_distr = "0.5"
+rustc-hash = "2.1.0"
+
+# 工具类
 parking_lot = "0.12"
-reqwest = { version = "0.13", features = ["json"] }
+thiserror = "1.0"
+# 用于处理 API 请求校验
+validator = { version = "0.19", features = ["derive"] }
+# 异步流处理，修复 api.rs 中的 StreamExt 报错
+futures = "0.3"
+
+# 日志与监控
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-rustc-hash = "2.1.0"
-thiserror = "1.0"
-aws-lc-rs = { version = "1.11.1", features = ["bindgen"] }
 
-[env]
-# 1. MinGW 标准库路径
-# 2. GCC 内部头文件路径 (w64devkit 通常在此目录下)
-# 3. LLVM 自身资源路径 (你之前找到的那个)
-BINDGEN_EXTRA_CLANG_ARGS = """
--I D:/Downloader/downloads/w64devkit/x86_64-w64-mingw32/include 
--I D:/Downloader/downloads/w64devkit/lib/gcc/x86_64-w64-mingw32/14.2.0/include 
--I D:/Program Files/LLVM/lib/clang/21/include
-"""
+# 加密与底层 (GitHub Actions 建议开启预编译或在 YML 中安装 LLVM)
+aws-lc-rs = { version = "1.11", features = ["bindgen"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = 'abort'
