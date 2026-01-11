@@ -2,29 +2,32 @@ use serde::{Deserialize, Serialize};
 use bincode::{Encode, Decode};
 use std::borrow::Cow;
 use rustc_hash::FxHashMap;
+use validator::Validate;
 
 // =========================================================================
-// 1. 宏定义 (Macros) - 修正后的写法
+// 1. 宏定义 (Macros)
 // =========================================================================
 
+/// 自动为结构体添加常用派生属性：Debug, Clone, Serde, Bincode
 macro_rules! serializable {
     ($($item:tt)*) => {
-        #[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
+        #[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode, Default)]
         #[serde(rename_all = "camelCase")]
         $($item)*
     };
 }
 
+/// 专门用于 Web API 交互的模型（不包含 Bincode 编解码）
 macro_rules! web_model {
     ($($item:tt)*) => {
-        #[derive(Debug, Clone, Serialize, Deserialize)]
+        #[derive(Debug, Clone, Serialize, Deserialize, Default, Validate)]
         #[serde(rename_all = "camelCase")]
         $($item)*
     };
 }
 
 // =========================================================================
-// 2. 基础工具与函数 (Utilities)
+// 2. 辅助特征与函数 (Utilities)
 // =========================================================================
 
 pub trait Roundable {
@@ -38,13 +41,12 @@ impl Roundable for f64 {
     }
 }
 
-// 补充报错中找不到的 models::round_2 函数
 pub fn round_2(val: f64) -> f64 {
     val.round_2()
 }
 
 // =========================================================================
-// 3. 模型定义 (Models)
+// 3. 配置模型 (Config)
 // =========================================================================
 
 serializable! {
@@ -68,28 +70,9 @@ serializable! {
     }
 }
 
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            global_iota: 0.0,
-            base_env_index: 1.0,
-            noise_std: 0.025,
-            weekend_factor: 0.02,
-            holiday_factor: 0.15,
-            public_holiday_factor: 0.10,
-            buy_premium: 1.25,
-            recovery_delta: 0.05,
-            recovery_tau: 3600.0,
-            version: 1,
-            port: 9981,
-            is_online_mode: false,
-            winter_start: "01-15".into(),
-            winter_end: "02-20".into(),
-            summer_start: "07-01".into(),
-            summer_end: "08-31".into(),
-        }
-    }
-}
+// =========================================================================
+// 4. 市场模型 (Market)
+// =========================================================================
 
 serializable! {
     pub struct MarketItem {
@@ -98,14 +81,31 @@ serializable! {
         pub name: Cow<'static, str>,
         pub base_price: f64,
         pub lambda: f64,
-        #[serde(default)]
         pub n: f64,
-        #[serde(default)]
         pub iota: f64,
     }
 }
 
-// 补全缺失的 SalesRecord
+web_model! {
+    pub struct MarketItemStatus {
+        pub price: f64,
+        pub buy_price: f64,
+        pub neff: f64,
+        pub base_price: f64,
+    }
+}
+
+serializable! {
+    pub struct EnvCache {
+        pub index: f64,
+        pub last_update: i64,
+    }
+}
+
+// =========================================================================
+// 5. 交易历史模型 (History)
+// =========================================================================
+
 serializable! {
     pub struct SalesRecord {
         pub timestamp: i64,
@@ -137,7 +137,10 @@ serializable! {
     }
 }
 
-// 补全 API 需要的 Request/Response
+// =========================================================================
+// 6. API 请求与响应模型 (Web Requests)
+// =========================================================================
+
 web_model! {
     pub struct TradeRequest {
         pub player_id: String,
@@ -147,10 +150,38 @@ web_model! {
     }
 }
 
-// 补全 EnvCache
-serializable! {
-    pub struct EnvCache {
-        pub index: f64,
-        pub last_update: i64,
+web_model! {
+    pub struct BatchTradeRequest {
+        pub player_id: String,
+        pub player_name: String,
+        pub trades: Vec<BatchTradeItem>,
+    }
+}
+
+web_model! {
+    pub struct BatchTradeItem {
+        pub item_id: String,
+        pub amount: f64,
+    }
+}
+
+web_model! {
+    pub struct BatchTradeResponse {
+        pub results: Vec<String>, // 或者更具体的 Result 结构
+    }
+}
+
+web_model! {
+    pub struct MarketPriceRequest {
+        pub item_ids: Vec<String>,
+    }
+}
+
+// 对应逻辑中可能用到的 TradeResponse
+web_model! {
+    pub struct TradeResponse {
+        pub success: bool,
+        pub message: String,
+        pub final_price: f64,
     }
 }
